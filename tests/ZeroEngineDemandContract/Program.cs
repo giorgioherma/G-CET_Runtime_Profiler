@@ -98,6 +98,17 @@ return SpatialHash
     var generatedHost = framework.Files[ZeroEngineDemandSource.InitPath];
     var generatedScheduler = framework.Files[ZeroEngineDemandSource.SchedulerPath];
     var originalStaged = staged.ToDictionary(x => x.Key, x => x.Value);
+    var fastScheduler = Encoding.UTF8.GetString(generatedScheduler).Replace("\r\n","\n");
+    var oldDemandScheduler = fastScheduler.Replace(ZeroEngineDemandSource.EveryFrameFastPath+"\n","",StringComparison.Ordinal);
+    var upgradedOk=ZeroEngineDemandSource.TryScheduler(oldDemandScheduler,out var upgradedDemandScheduler);
+    Check(oldDemandScheduler!=fastScheduler && upgradedOk &&
+        upgradedDemandScheduler==fastScheduler,"older every-frame demand controller upgrade");
+    Check(ZeroEngineDemandSource.TryScheduler(upgradedDemandScheduler,out var repeatDemandScheduler) &&
+        repeatDemandScheduler==upgradedDemandScheduler,"every-frame demand controller repeat");
+    var customDemandScheduler=oldDemandScheduler.Replace("local due, earliest = false, math.huge",
+        "local due, earliest = false, math.huge -- author custom");
+    Check(ZeroEngineDemandSource.TryScheduler(customDemandScheduler,out var retainedDemandScheduler) &&
+        retainedDemandScheduler==customDemandScheduler,"custom demand implementation must remain intact");
     Check(ZeroEngineDemandSource.TryStage(root, ref framework, staged, counts, manifest, skipped) == 0,
         "second generation must apply zero changes");
     Check(generatedHost.SequenceEqual(framework.Files[ZeroEngineDemandSource.InitPath]) &&

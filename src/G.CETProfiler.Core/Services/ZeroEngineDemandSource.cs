@@ -11,14 +11,34 @@ internal static class ZeroEngineDemandSource
     internal const string InitPath = "0-Engine/init.lua";
     internal const string SchedulerPath = "0-Engine/modules/G-CET/Scheduler.lua";
     private const string Marker = "-- G-CET scheduler demand v1";
+    internal const string EveryFrameFastPath = "        if lane.periods[1] and frame % 1 == 0 then return true end";
 
     internal static bool TryScheduler(string source, out string next)
     {
         next = source;
         if (source.Contains(Marker, StringComparison.Ordinal))
-            return source.Contains("Scheduler.Demand = demand", StringComparison.Ordinal) &&
-                source.Contains("function demand.TrackFrame(", StringComparison.Ordinal) &&
-                source.Contains("function demand.IsDue(", StringComparison.Ordinal);
+        {
+            if (!source.Contains("Scheduler.Demand = demand", StringComparison.Ordinal) ||
+                !source.Contains("function demand.TrackFrame(", StringComparison.Ordinal) ||
+                !source.Contains("function demand.IsDue(", StringComparison.Ordinal))
+                return false;
+            // Upgrade only a complete known prior controller. Preserve
+            // other extensions and customized/foreign implementations.
+            if (Count(source, "function demand.IsDue(") == 1 &&
+                Count(source, "function demand.TrackFrame(") == 1)
+            {
+                var canonical = Controller;
+                var start = canonical.IndexOf("    function demand.IsDue(", StringComparison.Ordinal);
+                var end = canonical.IndexOf("\n\n    Scheduler.Demand = demand", start, StringComparison.Ordinal);
+                var current = canonical[start..end];
+                var previous = current.Replace("\n"+EveryFrameFastPath, "", StringComparison.Ordinal);
+                var trackStart = canonical.IndexOf("    function demand.TrackFrame(", StringComparison.Ordinal);
+                var track = canonical[trackStart..start].TrimEnd();
+                if (Count(NormalizeLf(source), track) == 1)
+                    ReplaceUniqueLines(ref next, previous, current);
+            }
+            return true;
+        }
         if (source.Contains("Scheduler.Demand", StringComparison.Ordinal) ||
             !source.Contains("function Scheduler.Update(", StringComparison.Ordinal) ||
             !source.Contains("function Scheduler.EveryFrames(", StringComparison.Ordinal))
@@ -2444,6 +2464,7 @@ do
         local lane = lanes[service]
         if not lane then return false end
         if lane.fallback > 0 then return true end
+        if lane.periods[1] and frame % 1 == 0 then return true end
         if lane.lastFrame == frame then return lane.lastDue end
         if lane.nextDue and frame < lane.nextDue and
             (not lane.lastFrame or frame >= lane.lastFrame) then

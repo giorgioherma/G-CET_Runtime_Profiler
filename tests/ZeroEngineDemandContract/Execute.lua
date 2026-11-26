@@ -44,6 +44,30 @@ local d=P.RegisterZone({throttle=3,callback=hit("three")})
 advance(5)
 assert(table.concat(hits.three,",")=="81,84", "registration after dormancy resumes original phase")
 d.unregister()
+-- Period 1 dominates integer frame deadlines. Count actual registry passes.
+local D=scheduler.Demand
+local every=D.TrackFrame("test-fast",1)
+local five=D.TrackFrame("test-fast",5)
+local seven=D.TrackFrame("test-fast",7)
+local originalPairs=pairs
+local scans=0
+pairs=function(t) scans=scans+1; return originalPairs(t) end
+for f=1,70 do assert(D.IsDue("test-fast",f)) end
+assert(scans==0,"period-1 demand still traversed registry: "..scans)
+every.Cancel()
+for f=71,105 do
+    assert(D.IsDue("test-fast",f)==(f%5==0 or f%7==0),"deadline changed after fastest cancellation")
+end
+assert(scans>0,"slower union not recomputed")
+local again=D.TrackFrame("test-fast",1)
+local before=scans
+for f=106,175 do assert(D.IsDue("test-fast",f)) end
+assert(scans==before,"reactivation still traverses registry")
+assert(not D.IsDue("test-fast",175.5),"fractional frame semantics changed")
+again.Cancel(); five.Cancel(); seven.Cancel()
+assert(not D.IsDue("test-fast",176),"last consumer removal")
+pairs=originalPairs
+print("Canonical demand: period-1 registry passes 70 -> 0, cancellation/reactivation and slower union PASS")
 -- Existing scheduler job timing is independent; demand checks do not advance clocks.
 local calls=0
 scheduler.Init(nil,nil)
