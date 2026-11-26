@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -14,12 +15,13 @@ public:
         if(id<=0 || fields<=0 || (fields & ~Fields)) return false;
         for(auto& slot:slots_) {
             if(slot.id!=id)continue;
-            if(slot.fields!=fields){slot.fields=fields;slot.pending|=Snapshot;}
+            if(slot.fields!=fields){SetFields(static_cast<size_t>(&slot-slots_.data()),fields);slot.fields=fields;slot.pending|=Snapshot;}
             return true;
         }
         for(auto& slot:slots_) {
             if(slot.id)continue;
             slot={id,fields,Snapshot};
+            SetFields(static_cast<size_t>(&slot-slots_.data()),fields);
             ++subscribers_;
             return true;
         }
@@ -29,6 +31,7 @@ public:
         if(id<=0)return false;
         for(auto& slot:slots_) {
             if(slot.id!=id)continue;
+            SetFields(static_cast<size_t>(&slot-slots_.data()),0);
             slot={};
             --subscribers_;
             if(!subscribers_)known_=false;
@@ -94,17 +97,31 @@ public:
     }
 private:
     struct Slot{int32_t id=0,fields=0,pending=0;};
+    // Field membership changes at subscription mutation, not at producer
+    // cadence. Walk only actual recipients of this publication.
+    static_assert(Capacity==64);
+    void SetFields(size_t i,int32_t fields){
+        const uint64_t bit=uint64_t{1}<<i;
+        if(fields&Position)positionSlots_|=bit;else positionSlots_&=~bit;
+        if(fields&Availability)availabilitySlots_|=bit;else availabilitySlots_&=~bit;
+    }
     void Publish(int32_t flags){
-        for(auto& slot:slots_){
-            if(!slot.id)continue;
-            int32_t selected=(flags&slot.fields)|(flags&(Snapshot|Session));
-            if(!selected)continue;
+        uint64_t recipients=0;
+        if(flags&(Snapshot|Session))recipients=positionSlots_|availabilitySlots_;
+        else {
+            if(flags&Position)recipients|=positionSlots_;
+            if(flags&Availability)recipients|=availabilitySlots_;
+        }
+        for(;recipients;recipients&=recipients-1){
+            auto& slot=slots_[static_cast<size_t>(std::countr_zero(recipients))];
+            const int32_t selected=(flags&slot.fields)|(flags&(Snapshot|Session));
             // Changes may coalesce: always read the newest snapshot.
             if(slot.pending&Fields)slot.pending|=Coalesced;
             slot.pending|=selected;
         }
     }
     std::array<Slot,Capacity> slots_{};
+    uint64_t positionSlots_=0,availabilitySlots_=0;
     size_t subscribers_=0;
     bool running_=false,known_=false;
     uint32_t epoch_=0,revision_=0;

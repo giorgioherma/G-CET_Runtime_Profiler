@@ -77,5 +77,44 @@ int main(){
  for(int i=1;i<=64;++i)CHECK(s.Subscribe(i,PlayerSnapshot::Position));
  CHECK(!s.Subscribe(65,PlayerSnapshot::Position));
  for(int i=1;i<=64;++i)CHECK(s.Unsubscribe(i));
+ // Sparse slot 63 and independent field membership; pending bits survive
+ // field replacement, and no stale membership survives unsubscribe/reuse.
+ PlayerSnapshot sparse;
+ sparse.Enter();
+ for(int i=1;i<=64;++i)CHECK(sparse.Subscribe(i,PlayerSnapshot::Availability));
+ for(int i=1;i<64;++i)CHECK(sparse.Unsubscribe(i));
+ CHECK(sparse.SubscriberCount()==1&&sparse.Poll(64)==PlayerSnapshot::Snapshot);
+ sparse.Tick(true,1,2,3);
+ CHECK(sparse.Poll(64)==PlayerSnapshot::Availability);
+ auto startRev=sparse.Revision();
+ for(int i=2;i<=101;++i)sparse.Tick(true,float(i),2,3);
+ CHECK(sparse.Revision()==startRev+100&&sparse.Poll(64)==0&&sparse.X()==101);
+ CHECK(sparse.Subscribe(64,PlayerSnapshot::Position));
+ CHECK(sparse.Poll(64)==PlayerSnapshot::Snapshot);
+ CHECK(sparse.Subscribe(100,PlayerSnapshot::Fields));
+ CHECK(sparse.Poll(100)==PlayerSnapshot::Snapshot);
+ sparse.Tick(true,102,2,3);sparse.Tick(true,103,2,3);
+ CHECK(sparse.Poll(64)==(PlayerSnapshot::Position|PlayerSnapshot::Coalesced));
+ CHECK(sparse.Poll(100)==(PlayerSnapshot::Position|PlayerSnapshot::Coalesced));
+ sparse.Tick(true,104,2,3);
+ CHECK(sparse.Subscribe(64,PlayerSnapshot::Availability));
+ CHECK(sparse.Poll(64)==(PlayerSnapshot::Position|PlayerSnapshot::Snapshot));
+ CHECK(sparse.Poll(100)==PlayerSnapshot::Position);
+ sparse.Tick(true,105,2,3);
+ CHECK(sparse.Poll(64)==0&&sparse.Poll(100)==PlayerSnapshot::Position);
+ sparse.Tick(false,0,0,0);
+ CHECK(sparse.Poll(64)==PlayerSnapshot::Availability);
+ CHECK(sparse.Poll(100)==PlayerSnapshot::Availability);
+ sparse.Exit();
+ CHECK(sparse.Poll(64)==(PlayerSnapshot::Session|PlayerSnapshot::Snapshot|PlayerSnapshot::Availability));
+ CHECK(sparse.Poll(100)==(PlayerSnapshot::Session|PlayerSnapshot::Snapshot|PlayerSnapshot::Availability));
+ CHECK(sparse.Unsubscribe(64)&&sparse.Unsubscribe(100)&&!sparse.HasDemand());
+ CHECK(sparse.Subscribe(200,PlayerSnapshot::Position));
+ CHECK(sparse.Poll(64)==-1&&sparse.Poll(100)==-1);
+ CHECK(sparse.Poll(200)==PlayerSnapshot::Snapshot);
+ sparse.Enter();
+ CHECK(sparse.Poll(200)==(PlayerSnapshot::Snapshot|PlayerSnapshot::Session));
+ sparse.Tick(true,0,0,0);
+ CHECK(sparse.Poll(200)==PlayerSnapshot::Position);
  std::cout<<"PlayerSnapshot tests PASS\n";
 }
