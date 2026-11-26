@@ -72,5 +72,35 @@ int main(){
  shared.Reset();
  CHECK(shared.Read(202,true,produce,dav)&&physicalReads==7);
  std::cout<<"Shared frame position production: two panel consumers 2 -> 1; existing native seed 2 -> 0 extra acquisitions; exact and unknown-frame reads retained PASS\n";
+ // Actual shared spatial cache admission: a successful strict framework
+ // pose remains exact; two independent registered spatial users consume
+ // its sample through one existing native position owner.
+ DemandFrameCache cohort;
+ const PositionReceiver hero{0x1234,77},replacement{0x1234,78},other{0x4321,77};
+ Position4 coarse{};
+ const auto epoch=cohort.Generation();
+ unsigned hostReads=1,spatialReads=0;
+ CHECK(cohort.SeedSharedSpatial(300,true,hero,epoch,{4,5,6,1}));
+ auto spatial=[&](uint64_t frame,bool known,PositionReceiver who){
+   if(cohort.ReadSharedSpatial(frame,known,who,coarse))return;
+   ++spatialReads;coarse={9,10,11,1};
+ };
+ spatial(300,true,hero);
+ CHECK(hostReads+spatialReads==1&&coarse.x==4&&cohort.SharedSpatialHits()==1);
+ spatial(300,true,replacement);
+ spatial(300,true,other);
+ spatial(300,false,hero);
+ spatial(301,true,hero);
+ CHECK(spatialReads==4&&cohort.SharedSpatialHits()==1);
+ cohort.Reset();
+ CHECK(!cohort.SeedSharedSpatial(300,true,hero,epoch,{4,5,6,1}));
+ spatial(300,true,hero);
+ CHECK(spatialReads==5);
+ CHECK(cohort.SeedSharedSpatial(301,true,hero,cohort.Generation(),{4,5,6,1}));
+ CHECK(cohort.Read(301,true,produce,coarse,true));
+ CHECK(!cohort.HasSharedSpatialSample());
+ // The reverse phase order still reads both. No assertion that frame
+ // identity establishes exact gameplay equivalence or savings in game.
+ std::cout<<"Coarse spatial cohort: exact host pose + registered location phase 2 -> 1 acquisition when admitted; identity/epoch/frame/strict mismatch retained PASS\n";
  std::cout<<"DemandFrameCache PASS\n";
 }

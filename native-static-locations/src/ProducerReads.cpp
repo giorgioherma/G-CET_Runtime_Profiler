@@ -210,6 +210,7 @@ bool ValidOutput(T* value,rtti::IType* actual,rtti::IType* expected){
 // The SDK Vector4 wrapper does not itself declare the engine's stronger
 // alignment. Keep all actual pose result slots naturally 16-byte aligned.
 struct alignas(16) Pose {Vector4 position{};Quaternion orientation{};EulerAngles euler{};};
+template<bool ShareSpatial>
 void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     Receiver receiver;
     Vector4* pos=nullptr;Quaternion* orientation=nullptr;float* yaw=nullptr;
@@ -241,6 +242,12 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
         return g_generation.load(std::memory_order_acquire)==generation&&
                CRTTISystem::Get()==registry&&receiver.instance->GetType()==cls;
     };
+    SharedSpatialStamp shared{};
+    if constexpr(ShareSpatial){
+        // Do not insert any work after a failed original read. Stamp lookup
+        // is an optional preflight, never a prerequisite to the exact pose.
+        if(posFn&&oriFn&&yawFn)shared=BeginSharedSpatialPose(receiver.instance);
+    }
     Pose sample;
     auto result=ReadOrdered(sample,[&]{return posFn&&oriFn&&yawFn;},current,
         [&](Pose& p){return Read(posFn,receiver.instance,frame->func,b->vec,p.position);},
@@ -253,7 +260,11 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
             return Read(live,context,frame->func,b->angles,p.euler,b->quat,p.orientation);
         });
     *out=static_cast<int32_t>(result);
-    if(result==Result::Complete){*pos=sample.position;*orientation=sample.orientation;*yaw=sample.euler.Yaw;}
+    if(result==Result::Complete){
+        *pos=sample.position;*orientation=sample.orientation;*yaw=sample.euler.Yaw;
+        if constexpr(ShareSpatial)
+            if(shared.valid)CompleteSharedSpatialPose(shared,{sample.position.X,sample.position.Y,sample.position.Z,sample.position.W});
+    }
 }
 
 // Four values at most per crossing. CET's actual RTTI marshalling has a
@@ -343,7 +354,10 @@ void Register(const char* name,T handler,std::initializer_list<Arg> args) {
 void ResetProducerReads() noexcept {g_generation.fetch_add(1,std::memory_order_acq_rel);}
 void RegisterProducerReads(){
     ResetProducerReads();
-    Register("GCETReadPlayerPoseV1",ReadPose,{
+    Register("GCETReadPlayerPoseV1",ReadPose<false>,{
+        {"handle:entEntity","player"},{"Vector4","position",true},
+        {"Quaternion","orientation",true},{"Float","yaw",true}});
+    Register("GCETReadSharedPlayerPoseV1",ReadPose<true>,{
         {"handle:entEntity","player"},{"Vector4","position",true},
         {"Quaternion","orientation",true},{"Float","yaw",true}});
     Register("GCETReadBlackboard4IntV1",ReadBoard<false>,{

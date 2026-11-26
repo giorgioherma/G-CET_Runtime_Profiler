@@ -6,12 +6,21 @@ namespace gcet::static_locations {
 // Frame identity is authoritative only when the game's RTTI frame read succeeds.
 // If that read is unavailable, every request samples the engine directly.
 struct Position4 final {float x=0,y=0,z=0,w=0;};
+// A value-only receiver token; never dereference or retain a cached handle.
+struct PositionReceiver final {
+    uintptr_t instance=0;
+    uint64_t entity=0;
+    bool operator==(const PositionReceiver&) const=default;
+    bool Valid() const{return instance!=0&&entity!=0;}
+};
 class DemandFrameCache final {
 public:
-    void Reset(){valid_=false;frameValid_=false;++generation_;}
+    void Reset(){valid_=false;frameValid_=false;sharedReceiver_={};++generation_;}
     uint64_t Generation() const{return generation_;}
     uint64_t Hits() const{return hits_;}
     uint64_t Reads() const{return reads_;}
+    uint64_t SharedSpatialHits() const{return sharedSpatialHits_;}
+    bool HasSharedSpatialSample() const{return valid_&&frameValid_&&sharedReceiver_.Valid();}
     bool Valid() const{return valid_;}
     static bool Finite(Position4 p) {
         return std::isfinite(p.x)&&std::isfinite(p.y)&&
@@ -21,7 +30,20 @@ public:
     }
     void Seed(uint64_t frame,bool frameValid,Position4 p) {
         if(!frameValid||!Finite(p)) { Reset(); return; }
-        value_=p;frame_=frame;frameValid_=true;valid_=true;
+        value_=p;frame_=frame;frameValid_=true;valid_=true;sharedReceiver_={};
+    }
+    // Called only by the exact framework pose producer. Explicitly not an
+    // exact cross-callback gameplay promise: only coarse registered spatial
+    // discovery may consume this tagged sample.
+    bool SeedSharedSpatial(uint64_t frame,bool frameValid,PositionReceiver receiver,
+                           uint64_t generation,Position4 p) {
+        if(generation!=generation_||!frameValid||!receiver.Valid()||!Finite(p))return false;
+        Seed(frame,true,p);sharedReceiver_=receiver;
+        return true;
+    }
+    bool ReadSharedSpatial(uint64_t frame,bool frameValid,PositionReceiver receiver,Position4& out) {
+        if(!frameValid||!HasSharedSpatialSample()||frame_!=frame||receiver!=sharedReceiver_)return false;
+        out=value_;++sharedSpatialHits_;return true;
     }
     template<class Sampler>
     bool Read(uint64_t frame,bool frameValid,Sampler&& sample,Position4& out,
@@ -42,13 +64,15 @@ public:
             Reset();out={};return false;
         }
         out=current;
+        sharedReceiver_={};
         if(frameValid){value_=current;frame_=frame;frameValid_=true;valid_=true;}
         else{valid_=false;frameValid_=false;}
         return true;
     }
 private:
     Position4 value_{};
-    uint64_t frame_=0,generation_=0,hits_=0,reads_=0;
+    PositionReceiver sharedReceiver_{};
+    uint64_t frame_=0,generation_=0,hits_=0,reads_=0,sharedSpatialHits_=0;
     bool frameValid_=false,valid_=false;
 };
 }

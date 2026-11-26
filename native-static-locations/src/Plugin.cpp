@@ -9,6 +9,7 @@
 #include <RED4ext/Scripting/Utils.hpp>
 #include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
 #include <RED4ext/Scripting/Natives/Generated/Vector4.hpp>
+#include <RED4ext/Scripting/Natives/entEntity.hpp>
 #include <RED4ext/RED4ext.hpp>
 #include <RED4ext/RTTITypes.hpp>
 #include <RED4ext/Scripting/IScriptable.hpp>
@@ -26,6 +27,8 @@ namespace {
     gcet::static_locations::PlayerSnapshot g_playerSnapshot;
     gcet::static_locations::DemandFrameCache g_onDemandPosition;
     bool g_positionLastReadValid=false;
+    uint64_t g_spatialPhysicalReads=0;
+    bool g_sharedSpatialHost=false;
     gcet::static_locations::DiagnosticProbe g_probe(g_index,g_coordinator);
     const RED4ext::v1::Logger* g_logger=nullptr;
     RED4ext::v1::PluginHandle g_handle{};
@@ -59,11 +62,27 @@ namespace {
 
     // RED4ext's Running-state callback provides ONE native position owner.
     bool ReadFrameNumber(uint64_t& number);
-    int32_t SamplePlayer(float& x,float& y,float& z,float& w){
+    using PlayerHandle=RED4ext::Handle<RED4ext::IScriptable>;
+    bool CurrentPlayer(PlayerHandle& player){
         RED4ext::ScriptGameInstance game;
-        RED4ext::Handle<RED4ext::IScriptable> player;
-        if(!RED4ext::ExecuteGlobalFunction("GetPlayer;GameInstance",&player,game) || !player.instance)
-            return 1;
+        return RED4ext::ExecuteGlobalFunction("GetPlayer;GameInstance",&player,game)&&player.instance;
+    }
+    gcet::static_locations::PositionReceiver ReceiverToken(const PlayerHandle& player){
+        if(!player.instance)return {};
+        auto* klass=player.instance->GetType();
+        auto* rtti=RED4ext::CRTTISystem::Get();
+        auto* entity=rtti?rtti->GetClass("entEntity"):nullptr;
+        if(!entity)return {};
+        for(unsigned depth=0;klass&&depth<32;klass=klass->parent,++depth){
+            if(klass==entity){
+                auto* instance=static_cast<RED4ext::ent::Entity*>(player.instance);
+                return {reinterpret_cast<uintptr_t>(instance),instance->entityID.hash};
+            }
+        }
+        return {};
+    }
+    int32_t SamplePlayerHandle(const PlayerHandle& player,float& x,float& y,float& z,float& w){
+        if(!player.instance)return 1;
         auto* klass=player.instance->GetType();
         if(!klass)return 2;
         auto* method=klass->GetFunction("GetWorldPosition");
@@ -75,6 +94,18 @@ namespace {
            std::abs(x)>1000000.0f||std::abs(y)>1000000.0f||std::abs(z)>1000000.0f)
             return 5;
         return 0;
+    }
+    int32_t SamplePlayer(float& x,float& y,float& z,float& w){
+        PlayerHandle player;
+        if(!CurrentPlayer(player))return 1;
+        return SamplePlayerHandle(player,x,y,z,w);
+    }
+    // Only the existing canonical location host explicitly admits coarse
+    // frame freshness. Snapshot subscribers and diagnostic probes retain
+    // the exact original native acquisition phase.
+    bool SharedSpatialDemand(){
+        return g_sharedSpatialHost&&g_loaded&&g_index.ActiveCount()>0&&
+               !g_playerSnapshot.HasDemand()&&!g_autoProbe&&g_probe.Id()==0;
     }
     bool RunningEnter(RED4ext::CGameApplication*){
         gcet::producer::ResetProducerReads();
@@ -103,15 +134,35 @@ namespace {
         // Exactly one native player RTTI read, regardless of active clients.
         const auto generation=g_onDemandPosition.Generation();
         float x=0,y=0,z=0,w=0;
-        const int32_t code=SamplePlayer(x,y,z,w);
-        if(g_onDemandPosition.Generation()!=generation)return false;
-        // Share the already-performed native engine read with same-frame
-        // CET callers. If frame RTTI is unavailable, do not seed the cache.
+        int32_t code=1;
         uint64_t currentFrame=0;
-        const bool gotFrame=code==0 && ReadFrameNumber(currentFrame);
+        bool gotFrame=false,reused=false;
+        if(SharedSpatialDemand()&&g_onDemandPosition.HasSharedSpatialSample()){
+            PlayerHandle player;
+            gotFrame=ReadFrameNumber(currentFrame);
+            if(g_onDemandPosition.Generation()!=generation)return false;
+            const bool available=CurrentPlayer(player);
+            const auto token=available?ReceiverToken(player):gcet::static_locations::PositionReceiver{};
+            if(g_onDemandPosition.Generation()!=generation)return false;
+            gcet::static_locations::Position4 shared{};
+            if(available&&SharedSpatialDemand()&&
+               g_onDemandPosition.ReadSharedSpatial(currentFrame,gotFrame,token,shared)){
+                x=shared.x;y=shared.y;z=shared.z;w=shared.w;code=0;reused=true;
+            }else if(available){
+                ++g_spatialPhysicalReads;
+                code=SamplePlayerHandle(player,x,y,z,w);
+            }
+        }else{
+            ++g_spatialPhysicalReads;
+            code=SamplePlayer(x,y,z,w);
+        }
+        if(g_onDemandPosition.Generation()!=generation)return false;
+        // An exact native sample replaces the previous host tag. A reused
+        // host sample keeps the same single cache and its original identity.
+        if(!reused)gotFrame=code==0 && ReadFrameNumber(currentFrame);
         if(g_onDemandPosition.Generation()!=generation)return false;
         g_lastPlayerCode=code;
-        if(gotFrame)
+        if(gotFrame&&!reused)
             g_onDemandPosition.Seed(currentFrame,true,{x,y,z,w});
         else if(code!=0)
             g_onDemandPosition.Reset();
@@ -307,10 +358,20 @@ namespace {
     void StartSession(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, void*, int64_t) {
         frame->code++;
         g_index.ResetSession();
+        g_onDemandPosition.Reset();g_positionLastReadValid=false;
     }
     void Ready(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, bool* out, int64_t) {
         frame->code++;
         *out = g_loaded;
+    }
+    void SharedSpatialHost(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,bool* out,int64_t){
+        bool enabled=false;RED4ext::GetParameter(frame,&enabled);frame->code++;
+        // Explicit host lifecycle, default OFF for existing/foreign callers.
+        if(g_sharedSpatialHost!=enabled){
+            g_sharedSpatialHost=enabled;
+            g_onDemandPosition.Reset();g_positionLastReadValid=false;
+        }
+        *out=g_loaded;
     }
     void Count(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, int32_t* out, int64_t) {
         frame->code++;
@@ -434,6 +495,8 @@ namespace {
             case 11:*out=static_cast<int64_t>(g_coordinator.Ticks());return;
             case 12:*out=static_cast<int64_t>(g_coordinator.UnavailableTicks());return;
             case 13:*out=static_cast<int64_t>(g_coordinator.AvailabilityLosses());return;
+            case 14:*out=static_cast<int64_t>(g_spatialPhysicalReads);return;
+            case 15:*out=static_cast<int64_t>(g_onDemandPosition.SharedSpatialHits());return;
             default:*out=g_index.Metric(metric);return;
         }
     }
@@ -484,6 +547,9 @@ namespace {
         const char* indexNames[]={"index"};
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
+        const char* sharedNames[]={"enabled"};
+        const char* sharedTypes[]={"Bool"};
+        RegisterFunction("GCETStaticSharedSpatialHostV1",SharedSpatialHost,"Bool",sharedNames,sharedTypes,1);
         const char* observerNames[]={"klass","method"};
         const char* observerTypes[]={"CName","CName"};
         const char* demandNames[]={"handle","active"};
@@ -575,6 +641,26 @@ namespace {
     }
 }
 
+namespace gcet::producer {
+SharedSpatialStamp BeginSharedSpatialPose(RED4ext::IScriptable* receiver){
+    SharedSpatialStamp stamp{};
+    if(!SharedSpatialDemand())return stamp;
+    stamp.generation=g_onDemandPosition.Generation();
+    PlayerHandle current;
+    if(!CurrentPlayer(current)||current.instance!=receiver)return stamp;
+    stamp.receiver=ReceiverToken(current);
+    stamp.valid=stamp.receiver.Valid()&&ReadFrameNumber(stamp.frame)&&
+        g_onDemandPosition.Generation()==stamp.generation&&SharedSpatialDemand();
+    return stamp;
+}
+void CompleteSharedSpatialPose(const SharedSpatialStamp& stamp,static_locations::Position4 value){
+    if(!stamp.valid||!SharedSpatialDemand()||g_onDemandPosition.Generation()!=stamp.generation)return;
+    uint64_t frame=0;
+    if(!ReadFrameNumber(frame)||frame!=stamp.frame||!SharedSpatialDemand())return;
+    g_onDemandPosition.SeedSharedSpatial(frame,true,stamp.receiver,stamp.generation,value);
+}
+}
+
 RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
                                         RED4ext::v1::EMainReason reason,
                                         const RED4ext::v1::Sdk* sdk) {
@@ -607,6 +693,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         gcet::producer::ResetProducerReads();
         gcet::cet_dispatch::RetireObserver();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
+        g_sharedSpatialHost=false;
         g_playerSnapshot.Exit();g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
         g_logger=nullptr;
     }
