@@ -32,9 +32,8 @@ public:
         if(!frameValid||!Finite(p)) { Reset(); return; }
         value_=p;frame_=frame;frameValid_=true;valid_=true;sharedReceiver_={};
     }
-    // Called only by the exact framework pose producer. Explicitly not an
-    // exact cross-callback gameplay promise: only coarse registered spatial
-    // discovery may consume this tagged sample.
+    // Exact gameplay/host reads may donate to the existing coarse spatial
+    // lane. Explicitly not an exact cross-callback gameplay promise.
     bool SeedSharedSpatial(uint64_t frame,bool frameValid,PositionReceiver receiver,
                            uint64_t generation,Position4 p) {
         if(generation!=generation_||!frameValid||!receiver.Valid()||!Finite(p))return false;
@@ -67,6 +66,24 @@ public:
         sharedReceiver_={};
         if(frameValid){value_=current;frame_=frame;frameValid_=true;valid_=true;}
         else{valid_=false;frameValid_=false;}
+        return true;
+    }
+    // Strict caller always performs its original acquisition. If the
+    // already-admitted spatial lane is active, publish that SAME sample
+    // for its later compatible request. No extra position/player read.
+    template<class Sampler,class Confirm>
+    bool ReadLiveAndShareSpatial(uint64_t frame,bool frameValid,Sampler&& sample,
+                                 Confirm&& confirm,Position4& out) {
+        const auto generation=generation_;
+        PositionReceiver receiver{};
+        if(!Read(frame,frameValid,[&](Position4& p){return sample(p,receiver);},out,true))
+            return false;
+        if(frameValid&&receiver.Valid()){
+            const bool same=confirm();
+            if(generation_!=generation){out={};return false;}
+            if(same)SeedSharedSpatial(frame,true,receiver,generation,out);
+            // Unknown frame or a changed phase must never donate.
+        }
         return true;
     }
 private:

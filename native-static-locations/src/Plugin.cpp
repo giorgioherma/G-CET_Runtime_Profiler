@@ -301,6 +301,25 @@ namespace {
         out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
         g_positionLastReadValid=true;
     }
+    bool ReadLiveSpatialDonor(uint64_t frame,bool gotFrame,gcet::static_locations::Position4& pos){
+        if(!gotFrame||!SharedSpatialDemand())
+            return g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos,true);
+        // Reuse the SAME handle already required for the exact acquisition.
+        // No polling or additional player lookup is introduced.
+        return g_onDemandPosition.ReadLiveAndShareSpatial(frame,gotFrame,
+            [&](gcet::static_locations::Position4& value,gcet::static_locations::PositionReceiver& token){
+                PlayerHandle player;
+                if(!CurrentPlayer(player))return false;
+                token=ReceiverToken(player.instance);
+                float x=0,y=0,z=0,w=0;
+                if(SamplePlayerHandle(player,x,y,z,w)!=0)return false;
+                value={x,y,z,w};
+                return true;
+            },[&]{
+                uint64_t current=0;
+                return SharedSpatialDemand()&&ReadFrameNumber(current)&&current==frame&&SharedSpatialDemand();
+            },pos);
+    }
     void PlayerVector4Live(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
                            RED4ext::Vector4* out,int64_t) {
         f->code++;*out=RED4ext::Vector4{};
@@ -310,7 +329,7 @@ namespace {
         bool gotFrame=ReadFrameNumber(frame);
         gcet::static_locations::Position4 pos{};
         if(g_onDemandPosition.Generation()!=generation||
-           !g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos,true)){
+           !ReadLiveSpatialDonor(frame,gotFrame,pos)){
             g_positionLastReadValid=false;
             return;
         }

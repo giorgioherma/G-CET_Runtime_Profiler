@@ -102,5 +102,25 @@ int main(){
  // The reverse phase order still reads both. No assertion that frame
  // identity establishes exact gameplay equivalence or savings in game.
  std::cout<<"Coarse spatial cohort: exact host pose + registered location phase 2 -> 1 acquisition when admitted; identity/epoch/frame/strict mismatch retained PASS\n";
+ // Different gameplay callers still read at their own exact phase.
+ // Only their compatible coarse spatial consumer gets the donated sample.
+ DemandFrameCache liveDonor;
+ int exactReads=0,checks=0;
+ auto exact=[&](Position4& v,PositionReceiver& id){
+    ++exactReads;id=hero;v={float(exactReads),2,3,1};return true;
+ };
+ auto same=[&]{++checks;return true;};
+ CHECK(liveDonor.ReadLiveAndShareSpatial(400,true,exact,same,coarse)&&coarse.x==1);
+ CHECK(liveDonor.ReadLiveAndShareSpatial(400,true,exact,same,coarse)&&coarse.x==2);
+ CHECK(exactReads==2&&checks==2);
+ CHECK(liveDonor.ReadSharedSpatial(400,true,hero,coarse)&&coarse.x==2);
+ CHECK(!liveDonor.ReadSharedSpatial(400,true,other,coarse));
+ CHECK(liveDonor.ReadLiveAndShareSpatial(401,true,exact,[]{return false;},coarse)&&coarse.x==3);
+ CHECK(!liveDonor.HasSharedSpatialSample());
+ CHECK(liveDonor.ReadLiveAndShareSpatial(401,false,exact,same,coarse)&&coarse.x==4);
+ CHECK(checks==2&&!liveDonor.HasSharedSpatialSample());
+ CHECK(!liveDonor.ReadLiveAndShareSpatial(402,true,exact,[&]{liveDonor.Reset();return true;},coarse));
+ CHECK(!liveDonor.HasSharedSpatialSample());
+ std::cout<<"Strict gameplay donors: two exact acquisitions retained, compatible spatial acquisition eliminated, latest sample/unknown frame/epoch safeguards PASS\n";
  std::cout<<"DemandFrameCache PASS\n";
 }
