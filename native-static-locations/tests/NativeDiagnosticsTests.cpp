@@ -17,6 +17,12 @@ int main(){
     c.Record(Lane::SharedPose,Code::Attempt);
     c.Record(Lane::SharedPose,Code::Complete);
     Require(messages.size()==5);
+    Require(c.ClaimDetail(Lane::Pose,0));
+    for(int i=0;i<10000;++i)Require(!c.ClaimDetail(Lane::Pose,0));
+    Require(c.ClaimDetail(Lane::Pose,1)&&c.ClaimDetail(Lane::SharedPose,0));
+    Require(!c.ClaimDetail(Lane::Pose,4));
+    c.Detail("ABI test");
+    Require(messages.back()=="ABI test");
     c.Summary("test");
     bool refused=false,zero=false,success=false;
     for(const auto& m:messages){

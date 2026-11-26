@@ -31,12 +31,23 @@ bool ReadTypedResult(Type* type,Invoke&& invoke,Copy&& copy) {
 
 // Validate direct typed out-parameter storage before any producer runs.
 // The CET opcode supplies the actual live RTTI type and data pointer.
+enum class OutStorageStatus { Valid,Null,TypeMissing,TypeMismatch,SizeMismatch,AlignmentInvalid,AddressMisaligned,AddressOverflow };
 template<class Type>
-bool ValidOutStorage(const void* address,const Type* actual,const Type* expected,size_t size) {
-    if(!address||!actual||actual!=expected||actual->GetSize()!=size)return false;
+OutStorageStatus InspectOutStorage(const void* address,const Type* actual,const Type* expected,size_t size) {
+    if(!address)return OutStorageStatus::Null;
+    if(!actual)return OutStorageStatus::TypeMissing;
+    if(actual!=expected)return OutStorageStatus::TypeMismatch;
+    if(actual->GetSize()!=size)return OutStorageStatus::SizeMismatch;
     const auto a=actual->GetAlignment();
     const auto p=reinterpret_cast<uintptr_t>(address);
-    return a&&a<=16&&(a&(a-1))==0&&(p&(a-1))==0&&p<=UINTPTR_MAX-size;
+    if(!a||a>16||(a&(a-1))!=0)return OutStorageStatus::AlignmentInvalid;
+    if((p&(a-1))!=0)return OutStorageStatus::AddressMisaligned;
+    if(p>UINTPTR_MAX-size)return OutStorageStatus::AddressOverflow;
+    return OutStorageStatus::Valid;
+}
+template<class Type>
+bool ValidOutStorage(const void* address,const Type* actual,const Type* expected,size_t size) {
+    return InspectOutStorage(address,actual,expected,size)==OutStorageStatus::Valid;
 }
 inline bool DisjointOut(const void* a,size_t as,const void* b,size_t bs) {
     const auto x=reinterpret_cast<uintptr_t>(a),y=reinterpret_cast<uintptr_t>(b);

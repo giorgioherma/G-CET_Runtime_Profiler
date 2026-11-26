@@ -744,7 +744,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         g_handle=handle;
         g_logger=sdk?sdk->logger:nullptr;
         gcet::diagnostics::counters.SetSink(DiagnosticLog);
-        DiagnosticLog("G-NativeRuntime DIAG v1 enabled; cumulative counters; no safety bypass");
+        DiagnosticLog("G-NativeRuntime DIAG v2 enabled; cumulative counters; CET 1.37.1 ABI snapshots; no safety bypass");
         if(!LoadData()) { gcet::diagnostics::counters.SetSink(nullptr);g_logger=nullptr; return false; }
         if(g_loaded) {
             if(g_manifestStatus == gcet::static_locations::ManifestLoadStatus::Missing)

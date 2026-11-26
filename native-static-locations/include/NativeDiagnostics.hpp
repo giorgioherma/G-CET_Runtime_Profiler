@@ -10,9 +10,9 @@ namespace gcet::diagnostics {
 // on repeat observations. Only the first occurrence per lane/reason is logged.
 // Summaries are cumulative (not per capture); session boundaries label them.
 enum class Lane : size_t { Pose,SharedPose,PositionEuler,Board4Int,Board3IntBool,VectorFrame,VectorLive,VectorValid,Running,PlayerSubscribe,PlayerUnsubscribe,StaticArm,StaticArmCoarse,StaticSubscribe,StaticUnsubscribe,StaticAddAnchor,StaticRemoveAnchor,StaticRemoveOwner,StaticReady,StaticCoordinator,StaticPoll,StaticSnapshot,StaticAck,FrameNumber,PlayerSample, Count };
-enum class Code : size_t { Attempt,Complete,Unsupported,Failed,NoResult,NoReceiver,NoContext,NoCaller,NoOutput,NoBindings,NoClass,WrongReceiverClass,CallerFullName,CallerShortName,CallerParams,CallerContextType,PositionStorage,OrientationStorage,EulerStorage,IntStorage,IntKeyStorage,BoolStorage,BoolKeyStorage,PositionOutput,OrientationOutput,YawOutput,EulerOutput,IntOutput,BoolOutput,OutputOverlap,PositionMethod,OrientationMethod,EulerMethod,IntMethod,BoolMethod,EpochChanged,PositionRead,OrientationRead,EulerRead,IntRead1,IntRead2,IntRead3,IntRead4,BoolRead,NoDemand,LocationDemand,SnapshotDemand,BothDemand,Unknown,Resync,Empty,Event,NoRtti,NoFrameClass,NoFrameMethod,InvokeFailed,NoPlayer,InvalidSample,NotReady,Registered,RegisterTypeMissing,RegisterCreateFailed,RegisterReturnFailed,RegisterParamFailed, Count };
+enum class Code : size_t { Attempt,Complete,Unsupported,Failed,NoResult,NoReceiver,NoContext,NoCaller,NoOutput,NoBindings,NoClass,WrongReceiverClass,CallerFullName,CallerShortName,CallerParams,CallerContextType,PositionStorage,OrientationStorage,EulerStorage,IntStorage,IntKeyStorage,BoolStorage,BoolKeyStorage,PositionOutput,OrientationOutput,YawOutput,EulerOutput,IntOutput,BoolOutput,OutputOverlap,PositionMethod,OrientationMethod,EulerMethod,IntMethod,BoolMethod,EpochChanged,PositionRead,OrientationRead,EulerRead,IntRead1,IntRead2,IntRead3,IntRead4,BoolRead,NoDemand,LocationDemand,SnapshotDemand,BothDemand,Unknown,Resync,Empty,Event,NoRtti,NoFrameClass,NoFrameMethod,InvokeFailed,NoPlayer,InvalidSample,NotReady,Registered,RegisterTypeMissing,RegisterCreateFailed,RegisterReturnFailed,RegisterParamFailed, OutputNull,OutputTypeMissing,OutputTypeMismatch,OutputSizeMismatch,OutputAlignmentInvalid,OutputAddressMisaligned,OutputAddressOverflow, Count };
 inline constexpr const char* LaneNames[]={"Pose","SharedPose","PositionEuler","Board4Int","Board3IntBool","VectorFrame","VectorLive","VectorValid","Running","PlayerSubscribe","PlayerUnsubscribe","StaticArm","StaticArmCoarse","StaticSubscribe","StaticUnsubscribe","StaticAddAnchor","StaticRemoveAnchor","StaticRemoveOwner","StaticReady","StaticCoordinator","StaticPoll","StaticSnapshot","StaticAck","FrameNumber","PlayerSample"};
-inline constexpr const char* CodeNames[]={"Attempt","Complete","Unsupported","Failed","NoResult","NoReceiver","NoContext","NoCaller","NoOutput","NoBindings","NoClass","WrongReceiverClass","CallerFullName","CallerShortName","CallerParams","CallerContextType","PositionStorage","OrientationStorage","EulerStorage","IntStorage","IntKeyStorage","BoolStorage","BoolKeyStorage","PositionOutput","OrientationOutput","YawOutput","EulerOutput","IntOutput","BoolOutput","OutputOverlap","PositionMethod","OrientationMethod","EulerMethod","IntMethod","BoolMethod","EpochChanged","PositionRead","OrientationRead","EulerRead","IntRead1","IntRead2","IntRead3","IntRead4","BoolRead","NoDemand","LocationDemand","SnapshotDemand","BothDemand","Unknown","Resync","Empty","Event","NoRtti","NoFrameClass","NoFrameMethod","InvokeFailed","NoPlayer","InvalidSample","NotReady","Registered","RegisterTypeMissing","RegisterCreateFailed","RegisterReturnFailed","RegisterParamFailed"};
+inline constexpr const char* CodeNames[]={"Attempt","Complete","Unsupported","Failed","NoResult","NoReceiver","NoContext","NoCaller","NoOutput","NoBindings","NoClass","WrongReceiverClass","CallerFullName","CallerShortName","CallerParams","CallerContextType","PositionStorage","OrientationStorage","EulerStorage","IntStorage","IntKeyStorage","BoolStorage","BoolKeyStorage","PositionOutput","OrientationOutput","YawOutput","EulerOutput","IntOutput","BoolOutput","OutputOverlap","PositionMethod","OrientationMethod","EulerMethod","IntMethod","BoolMethod","EpochChanged","PositionRead","OrientationRead","EulerRead","IntRead1","IntRead2","IntRead3","IntRead4","BoolRead","NoDemand","LocationDemand","SnapshotDemand","BothDemand","Unknown","Resync","Empty","Event","NoRtti","NoFrameClass","NoFrameMethod","InvokeFailed","NoPlayer","InvalidSample","NotReady","Registered","RegisterTypeMissing","RegisterCreateFailed","RegisterReturnFailed","RegisterParamFailed","OutputNull","OutputTypeMissing","OutputTypeMismatch","OutputSizeMismatch","OutputAlignmentInvalid","OutputAddressMisaligned","OutputAddressOverflow"};
 static_assert(std::size(LaneNames)==static_cast<size_t>(Lane::Count));
 static_assert(std::size(CodeNames)==static_cast<size_t>(Code::Count));
 using Sink=void(*)(const char*);
@@ -21,6 +21,7 @@ class Counters {
     static constexpr size_t M=static_cast<size_t>(Code::Count);
     std::array<std::array<std::atomic<uint64_t>,M>,N> values_{};
     std::atomic<Sink> sink_{nullptr};
+    std::array<std::array<std::atomic<bool>,4>,N> details_{};
 public:
     void SetSink(Sink sink) noexcept {sink_.store(sink,std::memory_order_release);}
     uint64_t Get(Lane lane,Code code) const noexcept {
@@ -35,6 +36,13 @@ public:
         std::snprintf(line,sizeof(line),"G-NativeRuntime DIAG first lane=%s code=%s",
             LaneNames[static_cast<size_t>(lane)],CodeNames[static_cast<size_t>(code)]);
         sink(line);
+    }
+    // One ABI snapshot per lane/output slot; never dereference raw bytecode pointers.
+    bool ClaimDetail(Lane lane,size_t slot) noexcept {
+        return slot<4 && !details_[static_cast<size_t>(lane)][slot].exchange(true,std::memory_order_relaxed);
+    }
+    void Detail(const char* line) const noexcept {
+        if(auto sink=sink_.load(std::memory_order_acquire))sink(line);
     }
     void Summary(const char* boundary) const noexcept {
         auto sink=sink_.load(std::memory_order_acquire);

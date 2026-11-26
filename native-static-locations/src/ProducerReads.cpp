@@ -207,13 +207,59 @@ bool CETCallShape(IScriptable* context,CBaseFunction* caller,const Bindings& b,L
     return true;
 }
 template<class T>
-void ReadOutput(CStackFrame* frame,T*& value,rtti::IType*& type){
+void ReadOutput(CStackFrame* frame,T*& value,rtti::IType*& type,Lane lane,size_t slot,const char* expectedName){
+    // CET 1.37.1 constructs ParamOp 27 + RTTI pointer + storage pointer.
+    // Observe that encoding only for the known synthetic Lua caller.
+    // Keep opcode execution and the existing typed-output predicate unchanged.
+    const bool detail=gcet::diagnostics::counters.ClaimDetail(lane,slot);
+    unsigned opcode=0,consumed=0;
+    bool rawAvailable=false;
+    void* rawType=nullptr;
+    void* rawValue=nullptr;
+    const auto* start=frame->code;
+    if(detail&&start){
+        opcode=static_cast<unsigned char>(*start);
+        if(opcode==27&&frame->func&&frame->func->fullName==CName("$Lua")&&
+           frame->func->shortName==CName("$Lua")&&frame->func->params.Size()==0){
+            std::memcpy(&rawType,start+1,sizeof(rawType));
+            std::memcpy(&rawValue,start+1+sizeof(rawType),sizeof(rawValue));
+            rawAvailable=true;
+        }
+    }
     GetParameter(frame,&value);
     type=frame->dataType;
+    if(detail){
+        if(start&&frame->code)consumed=static_cast<unsigned>(
+            reinterpret_cast<uintptr_t>(frame->code)-reinterpret_cast<uintptr_t>(start));
+        auto* rtti=CRTTISystem::Get();
+        auto* expected=rtti?rtti->GetType(expectedName):nullptr;
+        // Never invoke virtual methods on an unrecognized RTTI address.
+        const auto size=expected?static_cast<size_t>(expected->GetSize()):0;
+        const auto align=expected?static_cast<size_t>(expected->GetAlignment()):0;
+        char line[640];
+        std::snprintf(line,sizeof(line),
+            "G-NativeRuntime DIAG ABI lane=%s slot=%zu expected=%s opcode=%u consumed=%u raw_available=%u raw_type=%p raw_value=%p decoded_type=%p decoded_value=%p frame_data=%p expected_type=%p expected_size=%zu expected_align=%zu cpp_size=%zu raw_mod16=%zu decoded_mod16=%zu actual_layout_known=%u",
+            gcet::diagnostics::LaneNames[static_cast<size_t>(lane)],slot,expectedName,opcode,consumed,
+            static_cast<unsigned>(rawAvailable),rawType,rawValue,static_cast<void*>(type),static_cast<void*>(value),
+            static_cast<void*>(frame->data),static_cast<void*>(expected),size,align,sizeof(T),
+            static_cast<size_t>(reinterpret_cast<uintptr_t>(rawValue)%16),
+            static_cast<size_t>(reinterpret_cast<uintptr_t>(value)%16),static_cast<unsigned>(type&&type==expected));
+        gcet::diagnostics::counters.Detail(line);
+    }
 }
 template<class T>
-bool ValidOutput(T* value,rtti::IType* actual,rtti::IType* expected){
-    return ValidOutStorage(value,actual,expected,sizeof(T));
+bool ValidOutput(T* value,rtti::IType* actual,rtti::IType* expected,Lane lane){
+    switch(InspectOutStorage(value,actual,expected,sizeof(T))){
+    case OutStorageStatus::Valid:return true;
+    case OutStorageStatus::Null:Record(lane,Code::OutputNull);break;
+    case OutStorageStatus::TypeMissing:Record(lane,Code::OutputTypeMissing);break;
+    case OutStorageStatus::TypeMismatch:Record(lane,Code::OutputTypeMismatch);break;
+    case OutStorageStatus::SizeMismatch:Record(lane,Code::OutputSizeMismatch);break;
+    case OutStorageStatus::AlignmentInvalid:Record(lane,Code::OutputAlignmentInvalid);break;
+    case OutStorageStatus::AddressMisaligned:Record(lane,Code::OutputAddressMisaligned);break;
+    case OutStorageStatus::AddressOverflow:Record(lane,Code::OutputAddressOverflow);break;
+    }
+    return false;
 }
 
 // The SDK Vector4 wrapper does not itself declare the engine's stronger
@@ -227,18 +273,18 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     Vector4* pos=nullptr;Quaternion* orientation=nullptr;float* yaw=nullptr;EulerAngles* angles=nullptr;
     rtti::IType *posType=nullptr,*orientationType=nullptr,*yawType=nullptr,*anglesType=nullptr;
     GetParameter(frame,&receiver);
-    ReadOutput(frame,pos,posType);
-    if constexpr(FullEuler)ReadOutput(frame,angles,anglesType);
-    else {ReadOutput(frame,orientation,orientationType);ReadOutput(frame,yaw,yawType);}
+    ReadOutput(frame,pos,posType,lane,0,"Vector4");
+    if constexpr(FullEuler)ReadOutput(frame,angles,anglesType,lane,1,"EulerAngles");
+    else {ReadOutput(frame,orientation,orientationType,lane,1,"Quaternion");ReadOutput(frame,yaw,yawType,lane,2,"Float");}
     frame->code++;
     if(!out){Record(lane,Code::NoResult);return;}
     *out=static_cast<int32_t>(Result::Unsupported);
     if(!receiver.instance){Reject(lane,Code::NoReceiver);return;}
-    if(!pos){Reject(lane,Code::PositionOutput);return;}
+    if(!pos){Record(lane,Code::OutputNull);Reject(lane,Code::PositionOutput);return;}
     if(!context){Reject(lane,Code::NoContext);return;}
     if(!frame->func){Reject(lane,Code::NoCaller);return;}
-    if constexpr(FullEuler){if(!angles){Reject(lane,Code::EulerOutput);return;}}
-    else if(!orientation||!yaw){Reject(lane,!orientation?Code::OrientationOutput:Code::YawOutput);return;}
+    if constexpr(FullEuler){if(!angles){Record(lane,Code::OutputNull);Reject(lane,Code::EulerOutput);return;}}
+    else if(!orientation||!yaw){Record(lane,Code::OutputNull);Reject(lane,!orientation?Code::OrientationOutput:Code::YawOutput);return;}
     auto* b=CurrentBindings();
     auto* cls=receiver.instance->GetType();
     if(!b){Reject(lane,Code::NoBindings);return;}
@@ -248,13 +294,13 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     if(!FitsTypedStorage<sizeof(Vector4)>(b->vec)){Reject(lane,Code::PositionStorage);return;}
     if(!FitsTypedStorage<sizeof(Quaternion)>(b->quat)){Reject(lane,Code::OrientationStorage);return;}
     if(!FitsTypedStorage<sizeof(EulerAngles)>(b->angles)){Reject(lane,Code::EulerStorage);return;}
-    if(!ValidOutput(pos,posType,b->vec)){Reject(lane,Code::PositionOutput);return;}
+    if(!ValidOutput(pos,posType,b->vec,lane)){Reject(lane,Code::PositionOutput);return;}
     if constexpr(FullEuler){
-        if(!ValidOutput(angles,anglesType,b->angles)){Reject(lane,Code::EulerOutput);return;}
+        if(!ValidOutput(angles,anglesType,b->angles,lane)){Reject(lane,Code::EulerOutput);return;}
         if(!DisjointOut(pos,sizeof(*pos),angles,sizeof(*angles))){Reject(lane,Code::OutputOverlap);return;}
     }else{
-        if(!ValidOutput(orientation,orientationType,b->quat)){Reject(lane,Code::OrientationOutput);return;}
-        if(!ValidOutput(yaw,yawType,b->floats)){Reject(lane,Code::YawOutput);return;}
+        if(!ValidOutput(orientation,orientationType,b->quat,lane)){Reject(lane,Code::OrientationOutput);return;}
+        if(!ValidOutput(yaw,yawType,b->floats,lane)){Reject(lane,Code::YawOutput);return;}
         if(!DisjointOut(pos,sizeof(*pos),orientation,sizeof(*orientation))||
            !DisjointOut(pos,sizeof(*pos),yaw,sizeof(*yaw))||
            !DisjointOut(orientation,sizeof(*orientation),yaw,sizeof(*yaw))){Reject(lane,Code::OutputOverlap);return;}
@@ -325,15 +371,15 @@ void ReadBoard(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     GetParameter(frame,&receiver);
     for(size_t i=0;i<(LastBool?3u:4u);++i)GetParameter(frame,&keys[i]);
     if constexpr(LastBool)GetParameter(frame,&boolKey);
-    for(size_t i=0;i<(LastBool?3u:4u);++i)ReadOutput(frame,values[i],valueTypes[i]);
-    if constexpr(LastBool)ReadOutput(frame,boolValue,boolValueType);
+    for(size_t i=0;i<(LastBool?3u:4u);++i)ReadOutput(frame,values[i],valueTypes[i],lane,i,"Int32");
+    if constexpr(LastBool)ReadOutput(frame,boolValue,boolValueType,lane,3,"Bool");
     frame->code++;
     if(!out){Record(lane,Code::NoResult);return;}
     *out=static_cast<int32_t>(Result::Unsupported);
     if(!receiver.instance){Reject(lane,Code::NoReceiver);return;}
     if(!frame->func){Reject(lane,Code::NoCaller);return;}
-    for(size_t i=0;i<(LastBool?3u:4u);++i)if(!values[i]){Reject(lane,Code::IntOutput);return;}
-    if constexpr(LastBool)if(!boolValue){Reject(lane,Code::BoolOutput);return;}
+    for(size_t i=0;i<(LastBool?3u:4u);++i)if(!values[i]){Record(lane,Code::OutputNull);Reject(lane,Code::IntOutput);return;}
+    if constexpr(LastBool)if(!boolValue){Record(lane,Code::OutputNull);Reject(lane,Code::BoolOutput);return;}
     auto* b=CurrentBindings();
     auto* cls=receiver.instance->GetType();
     if(!b){Reject(lane,Code::NoBindings);return;}
@@ -345,10 +391,10 @@ void ReadBoard(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     if constexpr(LastBool){
         if(!FitsTypedStorage<sizeof(bool)>(b->bools)){Reject(lane,Code::BoolStorage);return;}
         if(!FitsTypedStorage<sizeof(BoolKey)>(b->boolKey)){Reject(lane,Code::BoolKeyStorage);return;}
-        if(!ValidOutput(boolValue,boolValueType,b->bools)){Reject(lane,Code::BoolOutput);return;}
+        if(!ValidOutput(boolValue,boolValueType,b->bools,lane)){Reject(lane,Code::BoolOutput);return;}
     }
     for(size_t i=0;i<(LastBool?3u:4u);++i){
-        if(!ValidOutput(values[i],valueTypes[i],b->ints)){Reject(lane,Code::IntOutput);return;}
+        if(!ValidOutput(values[i],valueTypes[i],b->ints,lane)){Reject(lane,Code::IntOutput);return;}
         for(size_t j=0;j<i;++j)
             if(!DisjointOut(values[i],sizeof(int32_t),values[j],sizeof(int32_t))){Reject(lane,Code::OutputOverlap);return;}
         if constexpr(LastBool)
@@ -397,8 +443,19 @@ struct Arg {const char* type;const char* name;bool out=false;};
 template<class T>
 void Register(Lane lane,const char* name,T handler,std::initializer_list<Arg> args) {
     auto* rtti=CRTTISystem::Get();
-    if(!rtti||!rtti->GetType("Int32")){Record(lane,Code::RegisterTypeMissing);return;}
-    for(const auto& a:args)if(!rtti->GetType(a.type)){Record(lane,Code::RegisterTypeMissing);return;}
+    auto missing=[&](const char* type,const char* param){
+        char line[320];
+        std::snprintf(line,sizeof(line),"G-NativeRuntime DIAG registration lane=%s function=%s missing_type=%s parameter=%s registry=%u",
+            gcet::diagnostics::LaneNames[static_cast<size_t>(lane)],name,type,param,static_cast<unsigned>(rtti!=nullptr));
+        gcet::diagnostics::counters.Detail(line);
+        Record(lane,Code::RegisterTypeMissing);
+    };
+    if(!rtti||!rtti->GetType("Int32")){missing("Int32","return");return;}
+    // Observe all missing argument types at registration, without registering
+    // a function that the previous first-missing check would have refused.
+    bool allTypes=true;
+    for(const auto& a:args)if(!rtti->GetType(a.type)){missing(a.type,a.name);allTypes=false;}
+    if(!allTypes)return;
     // CET's own 264-byte marshalling buffer fits at most 15 ordinary
     // 17-byte parameters and the ParamEnd opcode.
     if(args.size()>15){Record(lane,Code::RegisterParamFailed);return;}

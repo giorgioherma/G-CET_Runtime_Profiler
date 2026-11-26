@@ -66,6 +66,17 @@ static void CheckTypedResult(){
     Require(!ValidOutStorage(storage.data(),&foreign,&type,16),"foreign same-size output");
     Require(!ValidOutStorage(storage.data()+1,&type,&type,16),"misaligned output");
     Require(!ValidOutStorage(storage.data(),static_cast<FakeType*>(nullptr),&type,16),"missing output type");
+    Require(InspectOutStorage(storage.data(),&type,&type,16)==OutStorageStatus::Valid,"valid reason");
+    Require(InspectOutStorage(nullptr,&type,&type,16)==OutStorageStatus::Null,"null reason");
+    Require(InspectOutStorage(storage.data(),static_cast<FakeType*>(nullptr),&type,16)==OutStorageStatus::TypeMissing,"missing RTTI reason");
+    Require(InspectOutStorage(storage.data(),&foreign,&type,16)==OutStorageStatus::TypeMismatch,"foreign RTTI reason");
+    Require(InspectOutStorage(storage.data()+8,&type,&type,16)==OutStorageStatus::AddressMisaligned,"8-byte CET slot reason");
+    type.size=12;
+    Require(InspectOutStorage(storage.data(),&type,&type,16)==OutStorageStatus::SizeMismatch,"size reason");
+    type.size=16;type.alignment=3;
+    Require(InspectOutStorage(storage.data(),&type,&type,16)==OutStorageStatus::AlignmentInvalid,"alignment metadata reason");
+    type.alignment=16;
+    Require(InspectOutStorage(reinterpret_cast<void*>(UINTPTR_MAX-15),&type,&type,16)==OutStorageStatus::AddressOverflow,"address range reason");
     Require(DisjointOut(storage.data(),16,storage.data()+16,16),"adjacent output slots");
     Require(!DisjointOut(storage.data(),16,storage.data()+8,16),"overlapping outputs");
     std::cout<<"Typed RTTI result: lifecycle, failure, exception, layout and out-slot validation PASS\n";
