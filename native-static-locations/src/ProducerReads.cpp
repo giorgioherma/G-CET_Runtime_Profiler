@@ -210,27 +210,37 @@ bool ValidOutput(T* value,rtti::IType* actual,rtti::IType* expected){
 // The SDK Vector4 wrapper does not itself declare the engine's stronger
 // alignment. Keep all actual pose result slots naturally 16-byte aligned.
 struct alignas(16) Pose {Vector4 position{};Quaternion orientation{};EulerAngles euler{};};
-template<bool ShareSpatial>
+template<bool ShareSpatial,bool FullEuler=false>
 void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     Receiver receiver;
-    Vector4* pos=nullptr;Quaternion* orientation=nullptr;float* yaw=nullptr;
-    rtti::IType *posType=nullptr,*orientationType=nullptr,*yawType=nullptr;
+    Vector4* pos=nullptr;Quaternion* orientation=nullptr;float* yaw=nullptr;EulerAngles* angles=nullptr;
+    rtti::IType *posType=nullptr,*orientationType=nullptr,*yawType=nullptr,*anglesType=nullptr;
     GetParameter(frame,&receiver);
-    ReadOutput(frame,pos,posType);ReadOutput(frame,orientation,orientationType);ReadOutput(frame,yaw,yawType);
+    ReadOutput(frame,pos,posType);
+    if constexpr(FullEuler)ReadOutput(frame,angles,anglesType);
+    else {ReadOutput(frame,orientation,orientationType);ReadOutput(frame,yaw,yawType);}
     frame->code++;
     if(!out)return;
     *out=static_cast<int32_t>(Result::Unsupported);
-    if(!receiver.instance||!pos||!orientation||!yaw||!context||!frame->func)return;
+    if(!receiver.instance||!pos||!context||!frame->func)return;
+    if constexpr(FullEuler){if(!angles)return;}
+    else if(!orientation||!yaw)return;
     auto* b=CurrentBindings();
     auto* cls=receiver.instance->GetType();
     if(!b||!cls||!HasBase(cls,b->entityClass)||!CETCallShape(context,frame->func,*b)||
        !FitsTypedStorage<sizeof(Vector4)>(b->vec)||!FitsTypedStorage<sizeof(Quaternion)>(b->quat)||
        !FitsTypedStorage<sizeof(EulerAngles)>(b->angles)||
-       !ValidOutput(pos,posType,b->vec)||!ValidOutput(orientation,orientationType,b->quat)||
-       !ValidOutput(yaw,yawType,b->floats)||
-       !DisjointOut(pos,sizeof(*pos),orientation,sizeof(*orientation))||
-       !DisjointOut(pos,sizeof(*pos),yaw,sizeof(*yaw))||
-       !DisjointOut(orientation,sizeof(*orientation),yaw,sizeof(*yaw)))return;
+       !ValidOutput(pos,posType,b->vec))return;
+    if constexpr(FullEuler){
+        if(!ValidOutput(angles,anglesType,b->angles)||
+           !DisjointOut(pos,sizeof(*pos),angles,sizeof(*angles)))return;
+    }else{
+        if(!ValidOutput(orientation,orientationType,b->quat)||
+           !ValidOutput(yaw,yawType,b->floats)||
+           !DisjointOut(pos,sizeof(*pos),orientation,sizeof(*orientation))||
+           !DisjointOut(pos,sizeof(*pos),yaw,sizeof(*yaw))||
+           !DisjointOut(orientation,sizeof(*orientation),yaw,sizeof(*yaw)))return;
+    }
     auto* posFn=Resolve(b->position,cls,"GetWorldPosition",false,b->vec);
     auto* oriFn=Resolve(b->orientation,cls,"GetWorldOrientation",false,b->quat);
     auto* yawFn=Resolve(b->euler,b->quaternionClass,"ToEulerAngles",true,b->angles,b->quat);
@@ -261,7 +271,9 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
         });
     *out=static_cast<int32_t>(result);
     if(result==Result::Complete){
-        *pos=sample.position;*orientation=sample.orientation;*yaw=sample.euler.Yaw;
+        *pos=sample.position;
+        if constexpr(FullEuler)*angles=sample.euler;
+        else {*orientation=sample.orientation;*yaw=sample.euler.Yaw;}
         if constexpr(ShareSpatial)
             if(shared.valid)CompleteSharedSpatialPose(shared,{sample.position.X,sample.position.Y,sample.position.Z,sample.position.W});
     }
@@ -360,6 +372,10 @@ void RegisterProducerReads(){
     Register("GCETReadSharedPlayerPoseV1",ReadPose<true>,{
         {"handle:entEntity","player"},{"Vector4","position",true},
         {"Quaternion","orientation",true},{"Float","yaw",true}});
+    // Same ordered producer; do not marshal an unused Quaternion into Lua.
+    Register("GCETReadPlayerPositionEulerV1",ReadPose<true,true>,{
+        {"handle:entEntity","player"},{"Vector4","position",true},
+        {"EulerAngles","angles",true}});
     Register("GCETReadBlackboard4IntV1",ReadBoard<false>,{
         {"handle:gameIBlackboard","board"},
         {IntKey::NAME,"key1"},{IntKey::NAME,"key2"},{IntKey::NAME,"key3"},{IntKey::NAME,"key4"},
