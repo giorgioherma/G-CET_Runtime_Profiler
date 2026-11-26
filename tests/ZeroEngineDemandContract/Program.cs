@@ -502,6 +502,43 @@ return Engine
         Check(playerProcess.ExitCode==0,"same-phase player observation execution");
     }
 
+    // Exercise the actual generated Cron lane, not a parallel timer.
+    var cronSource=File.ReadAllText(privateSource?Path.Combine(Path.GetFullPath(args[1]),"external","Cron.lua"):
+        "tests/ZeroEngineDemandContract/CronFixture.lua");
+    var cronHostSource=privateSource?host:File.ReadAllText("tests/ZeroEngineDemandContract/CronHostFixture.lua");
+    Check(ZeroEngineDemandSource.TryCronProducer(cronSource,out var cronGenerated)&&cronSource!=cronGenerated,"Cron source ownership");
+    Check(ZeroEngineDemandSource.TryCronHost(cronHostSource,out var cronHostGenerated)&&cronHostSource!=cronHostGenerated,"Cron host ownership");
+    Check(ZeroEngineDemandSource.TryCronProducer(cronGenerated,out var cronAgain)&&cronAgain==cronGenerated&&
+        ZeroEngineDemandSource.TryCronHost(cronHostGenerated,out var cronHostAgain)&&cronHostAgain==cronHostGenerated,"Cron source repeat");
+    foreach(var eol in new[]{"\n","\r\n"})
+    {
+        string CronLines(string text)=>text.Replace("\r\n","\n").Replace("\n",eol);
+        var complete=CronLines(cronGenerated);
+        var partialCron=complete.Replace(CronLines("    table.insert(timers, timer)\n    __gcetCronActive = __gcetCronActive + 1\n    __gcetCronSync()\n    return timer.id"),
+            CronLines("    table.insert(timers, timer)\n    return timer.id"));
+        Check(partialCron!=complete&&ZeroEngineDemandSource.TryCronProducer(partialCron,out var cronCompleted)&&cronCompleted==complete,
+            "Cron partial completion and EOL compatibility");
+    }
+    Check(!ZeroEngineDemandSource.TryCronProducer(cronSource.Replace("return Cron","external(timers)\nreturn Cron"),out _),"Cron registry escape must refuse");
+    Check(!ZeroEngineDemandSource.TryCronProducer(cronSource.Replace("timer.delay = timer.delay - delta","timer.delay = timer.delay - delta; timer.active = false"),out _),
+        "Cron unknown active-state mutation must refuse");
+    if(!privateSource)
+    {
+        var cronRoot=Path.Combine(root,"cron");
+        Directory.CreateDirectory(Path.Combine(cronRoot,"external"));
+        Directory.CreateDirectory(Path.Combine(cronRoot,"modules","G-CET"));
+        File.WriteAllText(Path.Combine(cronRoot,"external","Cron.lua"),cronGenerated);
+        File.WriteAllText(Path.Combine(cronRoot,"init.lua"),cronHostGenerated);
+        File.WriteAllText(Path.Combine(cronRoot,"stock-cron.lua"),cronSource);
+        File.WriteAllText(Path.Combine(cronRoot,"stock-host.lua"),cronHostSource);
+        File.WriteAllBytes(Path.Combine(cronRoot,"modules","G-CET","Scheduler.lua"),generatedScheduler);
+        var cronPsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+        cronPsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteCron.lua");
+        cronPsi.ArgumentList.Add(cronRoot);
+        using var cronProcess=Process.Start(cronPsi)!;cronProcess.WaitForExit();
+        Check(cronProcess.ExitCode==0,"Cron actual generated cadence");
+    }
+
     // Keep the existing spatial fixture independent; exercise the new
     // scalar transformation using the same production generator stage.
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);

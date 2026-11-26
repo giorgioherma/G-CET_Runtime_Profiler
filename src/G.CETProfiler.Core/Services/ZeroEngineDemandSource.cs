@@ -1920,6 +1920,313 @@ end
     // live module with a historical copy. Commit a service only when all three
     // pieces (scheduler, registry and host) are proved. No demand API emitted
     // solely for an incompatible host. Existing scheduler jobs unchanged.
+
+    // Author Cron remains the timing/ordering authority. A single canonical
+    // Scheduler lane tracks whether its existing update has active work or
+    // pending prune cleanup. No second clock, observer or timer dispatcher.
+    internal const string CronRelative = "0-Engine/external/Cron.lua";
+    private const string CronDeclareStock = """
+local prune = false
+""";
+    private const string CronDeclareTracked = """
+local prune = false
+-- G-CET Cron active work demand v1
+local __gcetCronActive, __gcetCronHandle = 0, nil
+local __gcetCronOk, __gcetCronScheduler = pcall(require, 'modules/G-CET/Scheduler')
+local __gcetCronDemand = __gcetCronOk and type(__gcetCronScheduler) == "table" and __gcetCronScheduler.Demand or nil
+if type(__gcetCronDemand) ~= "table" or type(__gcetCronDemand.TrackFrame) ~= "function" or type(__gcetCronDemand.IsDue) ~= "function" then
+    __gcetCronDemand = nil
+end
+local function __gcetCronSync()
+    if not __gcetCronDemand then return end
+    if __gcetCronActive > 0 or prune then
+        if not __gcetCronHandle then __gcetCronHandle = __gcetCronDemand.TrackFrame("Cron", 1) end
+    elseif __gcetCronHandle then
+        __gcetCronHandle.Cancel()
+        __gcetCronHandle = nil
+    end
+end
+""";
+    private const string CronInsertStock = """
+    table.insert(timers, timer)
+    return timer.id
+""";
+    private const string CronInsertTracked = """
+    table.insert(timers, timer)
+    __gcetCronActive = __gcetCronActive + 1
+    __gcetCronSync()
+    return timer.id
+""";
+    private const string CronHaltStock = """
+            timer.active = false
+            timer.halted = true
+            prune = true
+            break
+""";
+    private const string CronHaltTracked = """
+            if timer.active then __gcetCronActive = __gcetCronActive - 1 end
+            timer.active = false
+            timer.halted = true
+            prune = true
+            __gcetCronSync()
+            break
+""";
+    private const string CronPauseStock = """
+            if not timer.halted then
+                timer.active = false
+            end
+""";
+    private const string CronPauseTracked = """
+            if not timer.halted then
+                if timer.active then __gcetCronActive = __gcetCronActive - 1 end
+                timer.active = false
+                __gcetCronSync()
+            end
+""";
+    private const string CronResumeStock = """
+            if not timer.halted then
+                timer.active = true
+            end
+""";
+    private const string CronResumeTracked = """
+            if not timer.halted then
+                if not timer.active then __gcetCronActive = __gcetCronActive + 1 end
+                timer.active = true
+                __gcetCronSync()
+            end
+""";
+    private const string CronOneShotStock = """
+                    timer.active = false
+                    timer.halted = true
+                    prune = true
+""";
+    private const string CronOneShotTracked = """
+                    __gcetCronActive = __gcetCronActive - 1
+                    timer.active = false
+                    timer.halted = true
+                    prune = true
+""";
+    private const string CronPruneStock = """
+        for i = #timers, 1, -1 do
+            if timers[i].halted then
+                table.remove(timers, i)
+            end
+        end
+""";
+    private const string CronPruneTracked = """
+        for i = #timers, 1, -1 do
+            if timers[i].halted then
+                table.remove(timers, i)
+            end
+        end
+        __gcetCronSync()
+""";
+    private const string CronExportStock = """
+return Cron
+""";
+    private const string CronExportTracked = """
+Cron.__gcetDemand = __gcetCronDemand
+Cron.__gcetUpdate = Cron.Update
+return Cron
+""";
+    private const string CronAddBody = """
+local function addTimer(timeout, recurring, callback, args)
+    if type(timeout) ~= 'number' then
+        return
+    end
+    if timeout < 0 then
+        return
+    end
+    if type(recurring) ~= 'boolean' then
+        return
+    end
+    if type(callback) ~= 'function' then
+        if type(args) == 'function' then
+            callback, args = args, callback
+        else
+            return
+        end
+    end
+    if type(args) ~= 'table' then
+        args = { arg = args }
+    end
+    counter = counter + 1
+    local timer = {
+        id = counter,
+        callback = callback,
+        recurring = recurring,
+        timeout = timeout,
+        active = true,
+        halted = false,
+        delay = timeout,
+        args = args,
+    }
+    if args.id == nil then
+        args.id = timer.id
+    end
+    if args.interval == nil then
+        args.interval = timer.timeout
+    end
+    if args.Halt == nil then
+        args.Halt = Cron.Halt
+    end
+    if args.Pause == nil then
+        args.Pause = Cron.Pause
+    end
+    if args.Resume == nil then
+        args.Resume = Cron.Resume
+    end
+    table.insert(timers, timer)
+    return timer.id
+end
+""";
+    private const string CronHaltBody = """
+function Cron.Halt(timerId)
+    if type(timerId) == 'table' then
+        timerId = timerId.id
+    end
+    for _, timer in ipairs(timers) do
+        if timer.id == timerId then
+            timer.active = false
+            timer.halted = true
+            prune = true
+            break
+        end
+    end
+end
+""";
+    private const string CronPauseBody = """
+function Cron.Pause(timerId)
+    if type(timerId) == 'table' then
+        timerId = timerId.id
+    end
+    for _, timer in ipairs(timers) do
+        if timer.id == timerId then
+            if not timer.halted then
+                timer.active = false
+            end
+            break
+        end
+    end
+end
+""";
+    private const string CronResumeBody = """
+function Cron.Resume(timerId)
+    if type(timerId) == 'table' then
+        timerId = timerId.id
+    end
+    for _, timer in ipairs(timers) do
+        if timer.id == timerId then
+            if not timer.halted then
+                timer.active = true
+            end
+            break
+        end
+    end
+end
+""";
+    private const string CronUpdateBody = """
+function Cron.Update(delta)
+    if #timers == 0 then
+        return
+    end
+    for _, timer in ipairs(timers) do
+        if timer.active then
+            timer.delay = timer.delay - delta
+            if timer.delay <= 0 then
+                if timer.recurring then
+                    timer.delay = timer.delay + timer.timeout
+                else
+                    timer.active = false
+                    timer.halted = true
+                    prune = true
+                end
+                timer.callback(timer.args)
+            end
+        end
+    end
+    if prune then
+        prune = false
+        for i = #timers, 1, -1 do
+            if timers[i].halted then
+                table.remove(timers, i)
+            end
+        end
+    end
+end
+""";
+
+    internal static bool TryCronProducer(string source,out string next)
+    {
+        next=source;
+        var candidate=source;
+        var proof=source;
+        // Each fragment is independently composable. Normalize only the
+        // proven fragments for ownership checks; preserve author bytes.
+        foreach(var pair in new[]{
+            (CronDeclareStock,CronDeclareTracked),(CronInsertStock,CronInsertTracked),
+            (CronHaltStock,CronHaltTracked),(CronPauseStock,CronPauseTracked),
+            (CronResumeStock,CronResumeTracked),(CronOneShotStock,CronOneShotTracked),
+            (CronPruneStock,CronPruneTracked),(CronExportStock,CronExportTracked)})
+        {
+            var normalized=Regex.Replace(candidate,@"\r+\n","\n");
+            if(Count(normalized,NormalizeLf(pair.Item2))==1)
+            {
+                if(!ReplaceUniqueLines(ref proof,pair.Item2,pair.Item1))return false;
+            }
+            else if(!ReplaceUniqueLines(ref candidate,pair.Item1,pair.Item2))return false;
+        }
+        var code=WithoutLuaTrivia(proof);
+        if(Regex.IsMatch(code,@"\b__gcetCron\w*|\bCron\.__gcet(?:Demand|Update)\b")||
+            Regex.Matches(code,@"\btimers\b").Count!=10||
+            Regex.Matches(code,@"\bprune\b").Count!=5||
+            Count(code,"local timers = {}")!=1||
+            Count(code,"local prune = false")!=1||
+            Regex.Matches(code,@"\bCron\s*\.\s*Update\b").Count!=1)
+            return false;
+        foreach(var body in new[]{CronAddBody,CronHaltBody,CronPauseBody,CronResumeBody,CronUpdateBody})
+        {
+            var signature=NormalizeLf(body).Split('\n')[0];
+            var actual=Regex.Matches(proof,@"(?m)^"+Regex.Escape(signature)+
+                @"[ \t]*\r*\n[\s\S]*?^end[ \t]*(?=\r*$)");
+            if(actual.Count!=1||ProofTokens(actual[0].Value)!=ProofTokens(body))return false;
+        }
+        next=candidate;return true;
+    }
+
+    private const string CronHostStock="pcall(Cron.Update, delta)";
+    private const string CronHostTracked = """
+if not __gcetDemand or Cron.__gcetDemand ~= __gcetDemand or Cron.__gcetUpdate ~= Cron.Update
+    or __gcetDemand.IsDue("Cron", currentFrame) then
+    pcall(Cron.Update, delta)
+end
+""";
+    internal static bool TryCronHost(string source,out string next)
+    {
+        next=source;
+        var code=WithoutLuaTrivia(source);
+        if(Count(code,CronHostStock)!=1||
+            Count(code,"local function UpdateFrame(delta)")!=1||
+            Count(code,"local currentFrame = 0")!=1||
+            Regex.Matches(source,@"(?m)^local Cron\s*=\s*require\(['""]external/Cron['""]\)\s*(?=\r*$)").Count!=1)
+            return false;
+        var candidate=source;
+        if(Count(candidate,FrameDemandBind)==0)
+        {
+            if(candidate.Contains("__gcetDemand",StringComparison.Ordinal)||
+                !BeforeLine(ref candidate,"local function UpdateFrame(delta)",FrameDemandBind))return false;
+        }
+        if(Count(candidate,FrameDemandBind)!=1)return false;
+        var tracked="    "+NormalizeLf(CronHostTracked).Replace("\n","\n    ",StringComparison.Ordinal);
+        if(Count(Regex.Replace(candidate,@"\r+\n","\n"),tracked)==1)
+        {
+            next=candidate;return true;
+        }
+        if(Count(code,"Cron.__gcetDemand")!=0||Count(code,"Cron.__gcetUpdate")!=0)return false;
+        if(!ReplaceUniqueLines(ref candidate,"    "+CronHostStock,tracked))return false;
+        next=candidate;return true;
+    }
+
     internal static int TryStage(string modsRoot, ref FixedZeroEngineBuild framework,
         Dictionary<string, byte[]> staged, Dictionary<string, int> counts,
         List<object> manifest, List<object> skipped)
@@ -1990,6 +2297,30 @@ end
                 skipped.Add(new {type="SEMANTIC_RULE",Owner="0-Engine",
                     RuleId="0engine-demand-derived-scalar-sample",
                     reason="Unknown historical sample ownership; retain existing module and host."});
+        }
+        var cronLive=Path.Combine(modsRoot,"0-Engine","external","Cron.lua");
+        if(File.Exists(cronLive))
+        {
+            var bytes=staged.TryGetValue(CronRelative,out var cronPending)?cronPending:File.ReadAllBytes(cronLive);
+            var cron=Encoding.UTF8.GetString(bytes);
+            if(TryCronProducer(cron,out var cronNext)&&TryCronHost(host,out var cronHost))
+            {
+                if(cronNext!=cron||cronHost!=host||schedulerText!=Encoding.UTF8.GetString(scheduler))
+                {
+                    compatible++;applied++;
+                    if(cronNext!=cron)
+                    {
+                        staged[CronRelative]=Encoding.UTF8.GetBytes(cronNext);
+                        counts[CronRelative]=counts.GetValueOrDefault(CronRelative)+1;
+                    }
+                    host=cronHost;
+                    manifest.Add(new{type="FRAMEWORK_CRON_DEMAND",Owner="0-Engine",file=CronRelative,
+                        contract="GCET_CRON_ACTIVE_WORK_V1",sourceProof=true,
+                        callbackOrCadenceChanged=false,policy="CANONICAL_SCHEDULER_ACTIVE_TIMER_AND_PRUNE"});
+                }
+            }
+            else skipped.Add(new{type="SEMANTIC_RULE",Owner="0-Engine",
+                RuleId="0engine-cron-active-demand",reason="Timer registry mutation or host update not proven; retain author update."});
         }
         // Context demand belongs to the same existing scheduler. No new
         // native callback or recurring producer; old/mixed runtime fallback.
