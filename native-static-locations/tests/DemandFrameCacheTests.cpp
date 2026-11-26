@@ -116,7 +116,7 @@ int main(){
  CHECK(liveDonor.ReadSharedSpatial(400,true,hero,coarse)&&coarse.x==2);
  CHECK(!liveDonor.ReadSharedSpatial(400,true,other,coarse));
  CHECK(liveDonor.ReadLiveAndShareSpatial(401,true,exact,[]{return false;},coarse)&&coarse.x==3);
- CHECK(!liveDonor.HasSharedSpatialSample());
+ CHECK(!liveDonor.HasSharedSpatialSample()&&!liveDonor.Valid());
  CHECK(liveDonor.ReadLiveAndShareSpatial(401,false,exact,same,coarse)&&coarse.x==4);
  CHECK(checks==2&&!liveDonor.HasSharedSpatialSample());
  CHECK(!liveDonor.ReadLiveAndShareSpatial(402,true,exact,[&]{liveDonor.Reset();return true;},coarse));
@@ -152,6 +152,23 @@ int main(){
  auto invalidate=[&](uint64_t& f){++frames;f=500;liveDemand.Reset();return true;};
  CHECK(!liveDemand.ReadLiveForDemand(demand,invalidate,strictRead,donorRead,coarse));
  CHECK(frames==5&&strict==103&&donated==1);
+ // A failed donor confirmation cannot publish its pre-confirmation
+ // frame to either cohort. A reentrant display caller must acquire its
+ // own sample and the failed outer donation cannot erase it.
+ DemandFrameCache confirmed;
+ unsigned displayReads=0;
+ auto display=[&](Position4& v){++displayReads;v={77,2,3,1};return true;};
+ Position4 outer{},inner{};
+ CHECK(confirmed.ReadLiveAndShareSpatial(600,true,donorRead,[&]{
+     CHECK(!confirmed.Valid());
+     CHECK(confirmed.Read(600,true,display,inner)&&inner.x==77);
+     return false;
+ },outer));
+ CHECK(outer.x==99&&displayReads==1&&!confirmed.HasSharedSpatialSample());
+ CHECK(confirmed.Read(600,true,display,inner)&&inner.x==77&&displayReads==1);
+ CHECK(confirmed.ReadLiveAndShareSpatial(601,true,donorRead,[]{return false;},outer));
+ CHECK(!confirmed.Valid());
+ CHECK(confirmed.Read(601,true,display,inner)&&displayReads==2&&inner.x==77);
  std::cout<<"Demand-controlled strict position: 100 exact reads, 100 -> 0 frame-token acquisitions without coarse demand; active/unknown/removal/epoch paths PASS\n";
  std::cout<<"DemandFrameCache PASS\n";
 }

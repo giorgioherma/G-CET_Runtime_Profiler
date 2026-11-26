@@ -76,13 +76,18 @@ public:
                                  Confirm&& confirm,Position4& out) {
         const auto generation=generation_;
         PositionReceiver receiver{};
-        if(!Read(frame,frameValid,[&](Position4& p){return sample(p,receiver);},out,true))
+        // Do not publish a tagged display or spatial value until the
+        // post-read frame/receiver confirmation succeeds. In particular,
+        // confirmation may synchronously reenter a display getter.
+        if(!Read(0,false,[&](Position4& p){return sample(p,receiver);},out,true))
             return false;
         if(frameValid&&receiver.Valid()){
             const bool same=confirm();
             if(generation_!=generation){out={};return false;}
             if(same)SeedSharedSpatial(frame,true,receiver,generation,out);
             // Unknown frame or a changed phase must never donate.
+            // A nested exact display read may have installed its own valid
+            // sample: do not invalidate that independent result.
         }
         return true;
     }
