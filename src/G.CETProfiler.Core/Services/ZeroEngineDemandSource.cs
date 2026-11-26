@@ -577,9 +577,10 @@ end
         next=source;
         var candidate=source;
         var helper=Newlines(source,EmptyNativeLocationJob+"\n\n");
+        var slot=Newlines(source,"-- G-CET native location registration insertion slot\n");
         var helperCount=Count(candidate,helper);
-        if(helperCount>1)return false;
-        if(helperCount==1)candidate=candidate.Replace(helper,"",StringComparison.Ordinal);
+        if(helperCount>1||candidate.Contains(slot,StringComparison.Ordinal))return false;
+        if(helperCount==1)candidate=candidate.Replace(helper,slot,StringComparison.Ordinal);
         const string cancel="__gcetCancelEmptyLocationJob(self)";
         const string dynamicCleanup="for _,key in ipairs(added) do pcall(native,\"GCETStaticRemoveAnchor\",key) end";
         const string compiledCleanup="for _,key in ipairs(armed) do pcall(native,\"GCETStaticArm\",key,false) end";
@@ -624,8 +625,9 @@ end
               dynamicCleanup+"\n    "+cancel+"\n    return false")||
            !ReplaceUnique(ref candidate,compiledCleanup+"\n    return false",
               compiledCleanup+"\n    "+cancel+"\n    return false")||
-           !ReplaceUnique(ref candidate,tickEmpty,tickNew)||
-           !ReplaceUnique(ref candidate,"function Host.new(engine)",
+           !ReplaceUnique(ref candidate,tickEmpty,tickNew))return false;
+        if(helperCount==1)candidate=candidate.Replace(slot,helper,StringComparison.Ordinal);
+        else if(!ReplaceUnique(ref candidate,"function Host.new(engine)",
               EmptyNativeLocationJob+"\n\nfunction Host.new(engine)"))return false;
         next=candidate;return true;
     }
