@@ -872,7 +872,7 @@ $orderedPipeline=@(
  'var transformed = TransformFile(',
  'BlackboardPsmDefinitionCacheSource.TryStage(',
  'ZeroEngineAllocationBatchSource.TryStage(',
- 'NativePlayerVectorStage.TryStage(',
+ 'NativePlayerVectorStage.TryStageWithCapabilities(',
  'NativeReadReuseSource.TryStage(',
  'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
  'SemanticPassGeneratorService.ApplyWithComposedRuntime(',
