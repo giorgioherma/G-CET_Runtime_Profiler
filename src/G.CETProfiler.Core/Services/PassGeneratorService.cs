@@ -217,9 +217,10 @@ public static class PassGeneratorService
         // typed native forced-live getter plus original fail-open fallback.
         // Runs BEFORE generic GetPlayer shared-read replacement, otherwise
         // the direct chain would be hidden inside __gcetGetPlayer().
-        var nativePlayerVectorCount=NativePlayerVectorStage.TryStage(
+        var nativePlayerVectorCount=NativePlayerVectorStage.TryStageWithCapabilities(
             modsRoot,staged,appliedTransformsByFile,
-            transformManifest,skipped,effectiveRuntime.Native?.HasTypedPositionEuler == true);
+            transformManifest,skipped,effectiveRuntime.Native?.HasTypedPositionEuler == true,
+            out var orderedPoseTransforms);
 
         // Hotscenes personal opt-in was already applied before captured generic
         // dispatch, so local capacity is available on the FIRST generation.
@@ -454,7 +455,8 @@ public static class PassGeneratorService
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",
                 nativePlayerVectorRewrite = nativePlayerVectorCount > 0,
-                nativePlayerVectorGuardedLiveAppliedOccurrences = nativePlayerVectorCount,
+                nativePlayerVectorGuardedLiveAppliedOccurrences = nativePlayerVectorCount-orderedPoseTransforms,
+                nativeExactPositionEulerTransforms = orderedPoseTransforms,
                 nativePlayerVectorFrameReuseAuthorized = false,
                 nativePlayerVectorContract = NativePlayerVectorStage.Contract,
                 nativeRuntimeIncluded = nativeRuntime is not null,
@@ -2374,6 +2376,9 @@ public static class PassGeneratorService
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToArray();
     }
+
+    internal static string CanonicalPlayerProviderSource() =>
+        string.Join("\n",BuildSharedProviderHeader(SharedProviderRecipes["PLAYER"]));
 
     private static IEnumerable<string> BuildSharedProviderHeader(
         SharedProviderRecipe recipe)

@@ -384,7 +384,8 @@ end
     }
     private static bool IsCodeSpan(string code,Match m,Regex shape)=>
         shape.IsMatch(code.Substring(m.Index,m.Length));
-    internal static bool TryComposeExactPosePairs(string source,bool enabled,out string next,out int sites)
+    internal static bool TryComposeExactPosePairs(string source,bool enabled,out string next,out int sites,
+        string? canonicalPlayerProvider=null)
     {
         next=source;sites=0;
         const string slot="-- G-CET exact Euler insertion slot\n";
@@ -415,8 +416,10 @@ end
             // Local Game bindings or replacement of the facade are unknown.
             if(Regex.IsMatch(code,@"\blocal\s+Game\b|\bGame\s*(?:\.\s*GetPlayer\s*)?=(?!=)|\bfunction[^\(\r\n]*\([^)]*\bGame\b[^)]*\)"))
                 return false;
-            var sharedGetter=candidate.Contains("-- G-CET shared provider: PLAYER",StringComparison.Ordinal)&&
-                Regex.Matches(code,@"\blocal\s+function\s+__gcetGetPlayer\(\)[\s\S]*?return\s+Game\.GetPlayer\(\)\s*end").Count==1;
+            var knownGetter=canonicalPlayerProvider is null?null:Newlines(source,canonicalPlayerProvider);
+            var sharedGetter=knownGetter is not null&&knownGetter.Length>0&&Count(candidate,knownGetter)==1&&
+                Regex.Matches(code,@"\blocal\s+function\s+__gcetGetPlayer\s*\(").Count==1&&
+                !Regex.IsMatch(code,@"\b__gcetGetPlayer\s*=(?!=)|\bfunction[^\(\r\n]*\([^)]*\b__gcetGetPlayer\b[^)]*\)");
             // The source match itself must be code, not quoted or commented
             // text. Match original text too so no author comment is deleted.
             var pairs=EulerStockPair.Matches(candidate).Cast<Match>().Where(m=>

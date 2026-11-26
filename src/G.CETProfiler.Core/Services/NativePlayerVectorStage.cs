@@ -221,8 +221,16 @@ end
     internal static int TryStage(string modsRoot,
         Dictionary<string,byte[]> staged,
         Dictionary<string,int> appliedTransformsByFile,
-        List<object> transformManifest,List<object> skipped,bool typedPositionEuler=false)
+        List<object> transformManifest,List<object> skipped) =>
+        TryStageWithCapabilities(modsRoot,staged,appliedTransformsByFile,transformManifest,skipped,false,out _);
+
+    internal static int TryStageWithCapabilities(string modsRoot,
+        Dictionary<string,byte[]> staged,
+        Dictionary<string,int> appliedTransformsByFile,
+        List<object> transformManifest,List<object> skipped,bool typedPositionEuler,out int orderedPoseTransforms)
     {
+        orderedPoseTransforms=0;
+        var canonicalPlayerProvider=typedPositionEuler?PassGeneratorService.CanonicalPlayerProviderSource():null;
         var root=Path.GetFullPath(modsRoot);
         var prefix=root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
         // Scan the CURRENT installed files and all previously staged source;
@@ -257,7 +265,7 @@ end
                     skipped.Add(new{type="NATIVE_PLAYER_POSITION_FRAME_DISPLAY",file=key,reason="LUA_LOCAL_LIMIT"});
                 }
             }
-            var pairChanged=ZeroEngineDemandSource.TryComposeExactPosePairs(result,typedPositionEuler,out var posePairs,out var pairSites);
+            var pairChanged=ZeroEngineDemandSource.TryComposeExactPosePairs(result,typedPositionEuler,out var posePairs,out var pairSites,canonicalPlayerProvider);
             if(pairChanged)
             {
                 if(LuaLocalBudgetAnalyzer.Analyze(posePairs).MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
@@ -303,14 +311,18 @@ end
                 originalFallback="EXISTING_STRICT_LIVE_HELPER",runtimePerformance="NOT_MEASURED",
                 addsRecurringProducer=false
             });
-            if(pairChanged)transformManifest.Add(new{
-                type="NATIVE_EXACT_POSITION_EULER",file=key,sourceProof=true,
-                exactPairs=pairSites,backend=typedPositionEuler?"EXISTING_ORDERED_NATIVE_POSE":"AUTHOR_EXACT_READS",
-                engineReadsPerPairUnchanged=3,originalGetterOrderPreserved=true,
-                nativeCrossingsPerPair=typedPositionEuler?1:3,
-                coarseSpatialDonation=typedPositionEuler,
-                runtimePerformance="NOT_MEASURED",addsRecurringProducer=false
-            });
+            if(pairChanged)
+            {
+                orderedPoseTransforms+=Math.Max(1,pairSites);
+                transformManifest.Add(new{
+                    type="NATIVE_EXACT_POSITION_EULER",file=key,sourceProof=true,
+                    exactPairs=pairSites,backend=typedPositionEuler?"EXISTING_ORDERED_NATIVE_POSE":"AUTHOR_EXACT_READS",
+                    engineReadsPerPairUnchanged=3,originalGetterOrderPreserved=true,
+                    successfulTypedCrossingsPerPair=1,originalGetterCrossingsPerPair=3,
+                    coarseSpatialDonation=typedPositionEuler,
+                    runtimePerformance="NOT_MEASURED",addsRecurringProducer=false
+                });
+            }
             applied+=changes;
         }
         return applied;
