@@ -1469,8 +1469,8 @@ try
     var headerEnd=aDisplay.IndexOf("-- G-CET native player Vector4 on-demand live v1",StringComparison.Ordinal);
     Check(headerEnd>0&&Display(aDisplay[headerEnd..],3)==aDisplay,
         "missing display adapter partial completion");
-    object?[] drift=[aLive.Replace("useForGameplay(strict)","useForGameplay(strict, x)"),null,0];
-    Check(!(bool)displayTransform.Invoke(null,drift)!,"display local escaped into gameplay");
+    object?[] displayEscapeDrift=[aLive.Replace("useForGameplay(strict)","useForGameplay(strict, x)"),null,0];
+    Check(!(bool)displayTransform.Invoke(null,displayEscapeDrift)!,"display local escaped into gameplay");
     object?[] aliasDrift=[LiveDisplay(panelB.Replace("ImGui.Text(\"X:", "consume(pos)\r\n        ImGui.Text(\"X:")),null,0];
     Check(!(bool)displayTransform.Invoke(null,aliasDrift)!,"display vector escaped into gameplay");
     Console.WriteLine("Native independent display source: stock, existing live, CRLF, partial, repeat, gameplay drift PASS");
