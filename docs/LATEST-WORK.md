@@ -1,3 +1,7 @@
+## 2026-11-26 — Native #99 Windows stack fixture correction and real spatial trace
+- #99 Linux green and Windows linked the actual DLL, but native_static_index segfaulted before output: the added large StaticIndex (fixed journal storage) exceeded the Windows test stack. Move the test index to heap, not production storage. Extend the existing native core test to replay actual PositionCoordinator/StaticIndex transitions for two independent owner registrations, same-sample acquisition count 10 -> 5, equal NEAR/FAR trace. Exact game phase parity still pending.
+- Remove an unnecessary extra GetPlayer during exact host stamp publication: the existing pose receiver is passed through, and the native spatial consumer still validates current player identity. Unknown engine frame invalidates the old cache even when the exact fallback succeeds. Native compilation/revalidation pending.
+
 ## 2026-11-26 — Coarse spatial freshness is explicit per registration
 - No global shared-mode toggle: existing StaticIndex arm lifecycle records coarse admission per anchor. Mixed exact/foreign + coarse cohorts, no active anchors, player snapshot subscriptions or probes retain independent native reads. One O(1) count; no new scheduler or sampler. Coarse arm is optional ABI, ordinary arm restores exact freshness including changing an already-armed anchor's contract. Tests cover mixed owners, re-arm, removal, reset and zero demand. This is still experimental until loaded phase/transition equivalence is established.
 

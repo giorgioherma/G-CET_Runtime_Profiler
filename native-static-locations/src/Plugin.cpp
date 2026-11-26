@@ -66,15 +66,15 @@ namespace {
         RED4ext::ScriptGameInstance game;
         return RED4ext::ExecuteGlobalFunction("GetPlayer;GameInstance",&player,game)&&player.instance;
     }
-    gcet::static_locations::PositionReceiver ReceiverToken(const PlayerHandle& player){
-        if(!player.instance)return {};
-        auto* klass=player.instance->GetType();
+    gcet::static_locations::PositionReceiver ReceiverToken(RED4ext::IScriptable* player){
+        if(!player)return {};
+        auto* klass=player->GetType();
         auto* rtti=RED4ext::CRTTISystem::Get();
         auto* entity=rtti?rtti->GetClass("entEntity"):nullptr;
         if(!entity)return {};
         for(unsigned depth=0;klass&&depth<32;klass=klass->parent,++depth){
             if(klass==entity){
-                auto* instance=static_cast<RED4ext::ent::Entity*>(player.instance);
+                auto* instance=static_cast<RED4ext::ent::Entity*>(player);
                 return {reinterpret_cast<uintptr_t>(instance),instance->entityID.hash};
             }
         }
@@ -141,7 +141,7 @@ namespace {
             gotFrame=ReadFrameNumber(currentFrame);
             if(g_onDemandPosition.Generation()!=generation)return false;
             const bool available=CurrentPlayer(player);
-            const auto token=available?ReceiverToken(player):gcet::static_locations::PositionReceiver{};
+            const auto token=available?ReceiverToken(player.instance):gcet::static_locations::PositionReceiver{};
             if(g_onDemandPosition.Generation()!=generation)return false;
             gcet::static_locations::Position4 shared{};
             if(available&&SharedSpatialDemand()&&
@@ -163,7 +163,7 @@ namespace {
         g_lastPlayerCode=code;
         if(gotFrame&&!reused)
             g_onDemandPosition.Seed(currentFrame,true,{x,y,z,w});
-        else if(code!=0)
+        else if(!gotFrame)
             g_onDemandPosition.Reset();
         if(playerDemand)g_playerSnapshot.Tick(code==0,x,y,z,w);
         if(g_loaded && locationDemand){
@@ -639,9 +639,10 @@ SharedSpatialStamp BeginSharedSpatialPose(RED4ext::IScriptable* receiver){
     SharedSpatialStamp stamp{};
     if(!SharedSpatialDemand())return stamp;
     stamp.generation=g_onDemandPosition.Generation();
-    PlayerHandle current;
-    if(!CurrentPlayer(current)||current.instance!=receiver)return stamp;
-    stamp.receiver=ReceiverToken(current);
+    // The exact pose already receives the author-owned player handle.
+    // Do not issue another GetPlayer here. The later spatial consumer
+    // validates the actual current player against this value-only token.
+    stamp.receiver=ReceiverToken(receiver);
     stamp.valid=stamp.receiver.Valid()&&ReadFrameNumber(stamp.frame)&&
         g_onDemandPosition.Generation()==stamp.generation&&SharedSpatialDemand();
     return stamp;

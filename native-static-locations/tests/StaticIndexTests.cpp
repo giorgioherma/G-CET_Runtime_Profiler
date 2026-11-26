@@ -1,5 +1,6 @@
 #include "StaticIndex.hpp"
 #include "PositionCoordinator.hpp"
+#include "DemandFrameCache.hpp"
 #include "DiagnosticProbe.hpp"
 #include <cstdlib>
 #define GCET_ASSERT(expr) do { if(!(expr)) { std::cerr << "FAILED: " << #expr << " line " << __LINE__ << "\n"; std::abort(); } } while(false)
@@ -25,21 +26,58 @@ int main(int argc,char** argv) {
     GCET_ASSERT(s.ActiveCount()==0);
     // A foreign exact anchor blocks cohort reuse even when every other
     // registered owner explicitly accepted coarse spatial freshness.
-    StaticIndex cohort;
-    GCET_ASSERT(cohort.Load(input));
-    GCET_ASSERT(!cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(1,true,true)&&cohort.SetArmed(2,true,true));
-    GCET_ASSERT(cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(3,true)&&!cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(3,false)&&cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(1,true)&&!cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(1,true,true)&&cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(1,true,true)&&cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.RemoveOwner(11)&&cohort.AllActiveCoarseSpatial());
-    cohort.ResetSession();
-    GCET_ASSERT(cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.SetArmed(2,false)&&!cohort.AllActiveCoarseSpatial());
-    GCET_ASSERT(cohort.ActiveCount()==0);
+    auto cohort=std::make_unique<StaticIndex>();
+    GCET_ASSERT(cohort->Load(input));
+    GCET_ASSERT(!cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(1,true,true)&&cohort->SetArmed(2,true,true));
+    GCET_ASSERT(cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(3,true)&&!cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(3,false)&&cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(1,true)&&!cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(1,true,true)&&cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(1,true,true)&&cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->RemoveOwner(11)&&cohort->AllActiveCoarseSpatial());
+    cohort->ResetSession();
+    GCET_ASSERT(cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->SetArmed(2,false)&&!cohort->AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort->ActiveCount()==0);
+
+
+    // Replay actual native index/transition output with independent owner
+    // registrations, not merely two reads against a toy cache.
+    auto originalIndex=std::make_unique<StaticIndex>();
+    auto sharedIndex=std::make_unique<StaticIndex>();
+    GCET_ASSERT(originalIndex->Load(input)&&sharedIndex->Load(input));
+    PositionCoordinator original(*originalIndex),shared(*sharedIndex);
+    original.Enter();shared.Enter();
+    for(auto id:{1,3}){
+        GCET_ASSERT(originalIndex->SetArmed(id,true));
+        GCET_ASSERT(sharedIndex->SetArmed(id,true,true));
+    }
+    DemandFrameCache positions;
+    const PositionReceiver hero{0x1234,77};
+    const float route[]={0,80,280,280,0};
+    unsigned originalReads=0,sharedReads=0;
+    for(uint64_t i=0;i<5;++i){
+        const Position4 pos{route[i],0,5,1};
+        originalReads+=2; // exact host and original independent spatial read
+        GCET_ASSERT(original.Tick(true,pos.x,pos.y,pos.z));
+        ++sharedReads; // the exact host acquisition
+        GCET_ASSERT(positions.SeedSharedSpatial(i,true,hero,positions.Generation(),pos));
+        Position4 reused{};
+        GCET_ASSERT(sharedIndex->AllActiveCoarseSpatial());
+        if(!positions.ReadSharedSpatial(i,true,hero,reused)){
+            ++sharedReads;reused=pos;
+        }
+        GCET_ASSERT(shared.Tick(true,reused.x,reused.y,reused.z));
+        for(auto id:{1,3})GCET_ASSERT(originalIndex->State(id)==sharedIndex->State(id));
+        const auto a=originalIndex->Changes(),b=sharedIndex->Changes();
+        GCET_ASSERT(a.size()==b.size());
+        for(size_t k=0;k<a.size();++k)
+            GCET_ASSERT(a[k].id==b[k].id&&a[k].inside==b[k].inside);
+    }
+    GCET_ASSERT(originalReads==10&&sharedReads==5&&positions.SharedSpatialHits()==5);
+    std::cout<<"Actual native spatial coordinator: two registered owners, equal transition trace, host + spatial physical reads 10 -> 5 (same-sample fixture) PASS\n";
 
     // Optional manifest policy: absent permits source-owned registration,
     // malformed present data must NEVER quietly become an empty registry.
