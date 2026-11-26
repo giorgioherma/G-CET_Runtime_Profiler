@@ -128,6 +128,23 @@ if(args.Length==2&&args[0]=="--stock")
         generated.Split("playerBB:GetBool(").Length==stock.Split("playerBB:GetBool(").Length,
         "actual PSM mutable state reads changed");
     Console.WriteLine("Actual original PSM definition-cache partial completion PASS");
+    var producer=assembly.GetType("GCETRuntimeProfiler.Core.Services.ZeroEngineDemandSource",true)!;
+    var compose=producer.GetMethod("TryComposePsmBatches",BindingFlags.Static|BindingFlags.NonPublic)!;
+    var normalize=producer.GetMethod("TryNormalizePsmBatches",BindingFlags.Static|BindingFlags.NonPublic)!;
+    object?[] ordered=[generated,null,0];
+    Check((bool)compose.Invoke(null,ordered)!&&(int)ordered[2]==3,
+        "actual stock PSM ordered producer composition");
+    var nativeBoard=(string)ordered[1]!;
+    object?[] normalized=[nativeBoard,null];
+    Check((bool)normalize.Invoke(null,normalized)!,"actual typed PSM fallback recognition");
+    object?[] stageAgain=[Encoding.UTF8.GetBytes((string)normalized[1]!),null,null];
+    Check(!(bool)transform.Invoke(null,stageAgain)!&&(string)stageAgain[2]=="ALREADY_SATISFIED",
+        "actual native source preserves complete immutable key proof");
+    object?[] orderedAgain=[(string)normalized[1]!,null,0];
+    Check((bool)compose.Invoke(null,orderedAgain)!&&(string)orderedAgain[1]==nativeBoard,
+        "actual stock ordered PSM repeat is byte-identical");
+    Console.WriteLine("Actual PSM source: 12 mutable engine reads retained, 3 ordered typed crossings, existing definition ownership and repeat PASS");
+
 }
 var folder = Path.Combine(Path.GetTempPath(), "gcet-psm-defs-" + Guid.NewGuid().ToString("N"));
 try

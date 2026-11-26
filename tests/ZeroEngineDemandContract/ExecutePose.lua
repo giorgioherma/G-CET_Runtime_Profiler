@@ -117,3 +117,127 @@ for _,supported in ipairs({true,false}) do
     assert(disarm==2)
 end
 print("Shared exact pose + explicit two-owner coarse spatial registration, older ABI and cleanup PASS")
+
+-- Execute the actual generated exact pair paths, including failure after
+-- each original operation and unsupported-only replay. Values are NOT
+-- shared across exact callers even if a coarse consumer could reuse one.
+local function exactRun(path,mode)
+    local trace,attempts,current={},0,nil
+    local fail=0
+    Game={GetPlayer=function()return current end}
+    if mode~="missing" then
+        Game.GCETReadPlayerPositionEulerV1=function(player)
+            attempts=attempts+1
+            assert(player==current)
+            if mode=="unsupported" then return 0 end
+            local ok,p,e=originalPcall(function()
+                return player:GetWorldPosition(),player:GetWorldOrientation():ToEulerAngles()
+            end)
+            if not ok then
+                if mode=="throws" then error("native failed") end
+                return 2
+            end
+            return 1,p,e
+        end
+    end
+    condition=function()return true end
+    unchanged=function(p)assert(p==current);trace[#trace+1]="unchanged" end
+    local funcs=assert(dofile(path))
+    for i=1,12 do
+        fail=i%4
+        current={
+            GetWorldPosition=function(self)
+                assert(self==current);trace[#trace+1]="position:"..i
+                if fail==1 then error("position") end
+                return {x=i,w=1}
+            end,
+            GetWorldOrientation=function(self)
+                assert(self==current);trace[#trace+1]="orientation:"..i
+                if fail==2 then error("orientation") end
+                return {ToEulerAngles=function()
+                    trace[#trace+1]="euler:"..i
+                    if fail==3 then error("euler") end
+                    return {roll=i+1,pitch=i+2,yaw=i+3}
+                end}
+            end
+        }
+        for index,f in ipairs(funcs) do
+            local ok,p,e=originalPcall(f)
+            trace[#trace+1]="result:"..tostring(ok)
+            if ok then
+                trace[#trace+1]=tostring(p.x)..":"..tostring(p.w)..":"..
+                    (index==1 and (e.roll..":"..e.pitch..":"..e.yaw) or tostring(e))
+            end
+        end
+    end
+    return table.concat(trace,"|"),attempts
+end
+local exactOriginal=exactRun(root.."/exact-pairs-original.lua","missing")
+for _,mode in ipairs({"complete","unsupported","missing","throws"}) do
+    local trace,attempts=exactRun(root.."/exact-pairs-generated.lua",mode)
+    assert(trace==exactOriginal,"exact ordered Euler trace changed: "..mode)
+    assert(attempts==(mode=="missing" and 0 or 24))
+end
+print("Exact position/Euler pairs: same three engine reads, receiver/order/failure/full Euler/yaw results preserved; one successful typed crossing per pair PASS")
+
+-- Same 12 ordered PSM reads, exactly the same published values and
+-- callback/failure trace; native path never replays after a failed getter.
+local function boardRun(path,mode)
+    local trace,attempts,current,fail={},0,nil,0
+    Game={}
+    local function batch(board,k1,k2,k3,k4,lastBool)
+        attempts=attempts+1
+        assert(board==current)
+        if mode=="unsupported" then return 0 end
+        local ok,a,b,c,d=originalPcall(function()
+            local x=board:GetInt(k1)
+            local y=board:GetInt(k2)
+            local z=board:GetInt(k3)
+            if lastBool then return x,y,z,board:GetBool(k4) end
+            return x,y,z,board:GetInt(k4)
+        end)
+        if not ok then
+            if mode=="throws" then error("native board failed") end
+            return 2
+        end
+        return 1,a,b,c,d
+    end
+    if mode~="missing" then
+        Game.GCETReadBlackboard4IntV1=function(board,a,b,c,d)return batch(board,a,b,c,d,false) end
+        Game.GCETReadBlackboard3IntBoolV1=function(board,a,b,c,d)return batch(board,a,b,c,d,true) end
+    end
+    publish=function(...)
+        local out={}
+        for i=1,select("#",...) do out[i]=tostring(select(i,...)) end
+        trace[#trace+1]="publish:"..table.concat(out,",")
+    end
+    local cache=assert(dofile(path))
+    local successfulAttempts=0
+    for i=0,12 do
+        fail=i
+        current={
+            GetInt=function(self,k)
+                assert(self==current);trace[#trace+1]="int:"..k
+                if fail==k then error("int failure") end
+                return k*10+i
+            end,
+            GetBool=function(self,k)
+                assert(self==current);trace[#trace+1]="bool:"..k
+                if fail==k then error("bool failure") end
+                return i%2==0
+            end
+        }
+        cache.Attach(current)
+        local ok=originalPcall(cache.Update,current)
+        trace[#trace+1]="result:"..tostring(ok)
+        successfulAttempts=successfulAttempts+(i==0 and 3 or math.ceil(i/4))
+    end
+    return table.concat(trace,"|"),attempts,successfulAttempts
+end
+local boardOriginal=boardRun(root.."/psm-original.lua","missing")
+for _,mode in ipairs({"complete","unsupported","missing","throws"}) do
+    local trace,attempts,expected=boardRun(root.."/psm-generated.lua",mode)
+    assert(trace==boardOriginal,"ordered PSM read or event trace changed: "..mode)
+    assert(attempts==(mode=="missing" and 0 or expected))
+end
+print("PSM native batches: 12 original engine reads, three successful typed crossings; ordered values, publication, board replacement, every failure index and older ABI PASS")

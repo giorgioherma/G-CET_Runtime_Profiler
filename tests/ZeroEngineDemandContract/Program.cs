@@ -398,6 +398,74 @@ return UpdateFrame
     Check(ZeroEngineDemandSource.TryStagePose(ref sharedFramework,new(),true,false)==1&&
           ZeroEngineDemandSource.TryStagePose(ref sharedFramework,new(),true,false)==0,
           "atomic exact fallback repeat");
+    // Existing exact ordered native producer, two independent consumer
+    // shapes: full EulerAngles and yaw scalar. No frame-cache substitution.
+    var exactPairsSource="""
+local function first()
+    local player = Game.GetPlayer()
+    if not player then return end
+    local pos = player:GetWorldPosition()
+    local angles = player:GetWorldOrientation():ToEulerAngles()
+    return pos, angles
+end
+local function second()
+    local p = Game.GetPlayer()
+    if not p then return end
+    if condition() then
+        unchanged(p)
+    end
+    local where = p:GetWorldPosition()
+    local yaw = p:GetWorldOrientation():ToEulerAngles().yaw
+    return where, yaw
+end
+return {first, second}
+""".Replace("\r\n","\n",StringComparison.Ordinal);
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(exactPairsSource,true,out var exactPairsGenerated,out var exactPairCount)&&exactPairCount==2,
+        "two exact position/Euler source consumers");
+    Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(exactPairsGenerated,true,out var exactPairsRepeat,out _)&&exactPairsRepeat==exactPairsGenerated,
+        "exact pair source idempotence");
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(exactPairsGenerated,false,out var exactPairsOld,out _)&&exactPairsOld==exactPairsSource,
+        "older ABI restores original exact pose source");
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(exactPairsGenerated.Replace(
+        "local __gcetExactEulerNative, __gcetExactEulerResolved\n",""),true,out var exactPairsPartial,out _)&&exactPairsPartial==exactPairsGenerated,
+        "missing exact pair helper state completed");
+    var partialPairSource=exactPairsGenerated.Replace(
+        "local where, yaw = __gcetReadExactPositionEuler(p, true)",
+        "local where = p:GetWorldPosition()\n    local yaw = p:GetWorldOrientation():ToEulerAngles().yaw");
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(partialPairSource,true,out var partialPairOutput,out _)&&partialPairOutput==exactPairsGenerated,
+        "mixed original and generated exact pairs completed");
+    var mixedPairSource=exactPairsSource.Replace("unchanged(p)","p = replacement()");
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(mixedPairSource,true,out var mixedPairOutput,out var mixedPairCount)&&
+        mixedPairCount==1&&mixedPairOutput.Contains("local where = p:GetWorldPosition()"),
+        "receiver rebound: only affected pose pair retained");
+    var closurePairSource=exactPairsSource.Replace("unchanged(p)","register(function() p = replacement() end)");
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(closurePairSource,true,out var closurePairOutput,out var closurePairCount)&&closurePairCount==1&&
+        closurePairOutput.Contains("local where = p:GetWorldPosition()"),
+        "closure capture refuses only affected pair");
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(exactPairsSource.Replace("\n","\r\n"),true,out var exactPairsCrlf,out var exactPairsCrlfCount)&&
+        exactPairsCrlfCount==2&&!ZeroEngineDemandSource.TryComposeExactPosePairs(exactPairsCrlf,true,out _,out _),
+        "exact pair CRLF source convergence");
+    Check(!ZeroEngineDemandSource.TryComposeExactPosePairs("local Game = foreign\n"+exactPairsSource,true,out _,out _),
+        "shadowed Game facade cannot authorize typed pose");
+    var psmNames=new[]{"locomotion","locomotionDetailed","upperBody","weapon","vision","swimming","sceneTier","takedown","landing","bodyCarrying","carrying","mounted"};
+    var psmKeys=new[]{"Locomotion","LocomotionDetailed","UpperBody","Weapon","Vision","Swimming","SceneTier","Takedown","Landing","BodyCarrying","Carrying","MountedToVehicle"};
+    var psmReadSource="local BlackboardCache = {}\nlocal playerBB\nlocal __gcetPsmFields = {}\n"+
+        string.Join("\n",psmKeys.Select((key,i)=>"__gcetPsmFields."+key+" = "+(i+1)))+
+        "\nfunction BlackboardCache.Update(player)\n    if not playerBB then return end\n"+
+        string.Join("\n",psmNames.Select((name,i)=>"    local "+name+" = playerBB:"+(i==11?"GetBool":"GetInt")+"(__gcetPsmFields."+psmKeys[i]+")"))+
+        "\n    publish("+string.Join(", ",psmNames)+")\nend\nfunction BlackboardCache.Attach(board) playerBB = board end\nreturn BlackboardCache\n";
+    Check(ZeroEngineDemandSource.TryComposePsmBatches(psmReadSource,out var psmBatchGenerated,out var psmBatchCount)&&psmBatchCount==3,
+        "12 PSM state reads -> three exact ordered crossings");
+    Check(ZeroEngineDemandSource.TryNormalizePsmBatches(psmBatchGenerated,out var psmPlain)&&psmPlain==psmReadSource&&
+        ZeroEngineDemandSource.TryComposePsmBatches(psmPlain,out var psmAgain,out _)&&psmAgain==psmBatchGenerated,
+        "PSM old ABI and repeated composition");
+    Check(ZeroEngineDemandSource.TryNormalizePsmBatches(psmBatchGenerated.Replace(
+        "local __gcetPsmBatchInt, __gcetPsmBatchBool, __gcetPsmBatchResolved\n",""),out var psmPartial)&&
+        psmPartial==psmReadSource,"PSM partial state normalization");
+    var psmDrift=psmReadSource.Replace("    local weapon =","    observeIntermediate()\n    local weapon =");
+    Check(ZeroEngineDemandSource.TryComposePsmBatches(psmDrift,out var psmDriftOutput,out var psmDriftBatches)&&
+        psmDriftBatches==2&&psmDriftOutput.Contains("observeIntermediate()"),
+        "PSM groups never cross intervening gameplay calls");
     if(privateSource)
     {
         var poseStock=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
@@ -423,6 +491,26 @@ return UpdateFrame
             "actual private untouched host and shared spatial registration compose");
         Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),true,true)==0,
             "actual private shared production repeat");
+        var modRoot=Directory.GetParent(args[1])!.FullName;
+        var exactOwners=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int exactPrivateSites=0;
+        foreach(var file in Directory.EnumerateFiles(modRoot,"*.lua",SearchOption.AllDirectories))
+        {
+            var rel=Path.GetRelativePath(modRoot,file).Replace('\\','/');
+            var owner=rel.Split('/')[0];
+            if(owner.Equals("0-Engine",StringComparison.OrdinalIgnoreCase)||owner.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase)||
+                new FileInfo(file).Length>2_000_000)continue;
+            var stock=File.ReadAllText(file);
+            if(!ZeroEngineDemandSource.TryComposeExactPosePairs(stock,true,out var transformed,out var count))continue;
+            if(count==0)continue;
+            exactOwners.Add(owner);exactPrivateSites+=count;
+            Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(transformed,true,out var repeated,out _)&&repeated==transformed,
+                "actual private exact pair repeat: "+rel);
+        }
+        Check(exactOwners.Count>=2&&exactPrivateSites>=3,
+            "generic exact pair actual installed multi-owner admission: "+exactOwners.Count+"/"+exactPrivateSites);
+        Console.WriteLine($"Actual untouched collection exact position/Euler: {exactPrivateSites} source-proven pairs across {exactOwners.Count} owners, repeated source zero changes. Engine acquisition count unchanged.");
+
     }
     else
     {
@@ -431,6 +519,10 @@ return UpdateFrame
         File.WriteAllText(Path.Combine(root,"pose-typed.lua"),typedPose);
         File.WriteAllText(Path.Combine(root,"pose-shared.lua"),sharedPose);
         File.WriteAllText(Path.Combine(root,"spatial-shared.lua"),spatialShared);
+        File.WriteAllText(Path.Combine(root,"exact-pairs-original.lua"),exactPairsSource);
+        File.WriteAllText(Path.Combine(root,"exact-pairs-generated.lua"),exactPairsGenerated);
+        File.WriteAllText(Path.Combine(root,"psm-original.lua"),psmReadSource);
+        File.WriteAllText(Path.Combine(root,"psm-generated.lua"),psmBatchGenerated);
         var posePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
         posePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecutePose.lua");
         posePsi.ArgumentList.Add(root);
