@@ -162,8 +162,17 @@ if(args.Length==2&&args[0]=="--stock")
         Check(!Stage(),"actual exact PSM generation repeat");
         changes.Clear();counts.Clear();manifest.Clear();skips.Clear();
         File.WriteAllText(psmPath,nativeBoard);
-        Check(Stage()&&Encoding.UTF8.GetString(changes[psmRelative])==safe,
+        // The legacy grouped declaration discarded alignment whitespace
+        // from the original twelve lines. Compare its exact normalized
+        // source (including every untouched lifecycle/event statement),
+        // rather than demand recovery of whitespace absent from input.
+        Check(Stage()&&Encoding.UTF8.GetString(changes[psmRelative])==(string)normalized[1]!,
             "actual legacy PSM batch must restore per-read receiver and keys");
+        var restored=Encoding.UTF8.GetString(changes[psmRelative]);
+        Check(!restored.Contains("__gcetReadPsmBatch")&&
+            System.Text.RegularExpressions.Regex.Replace(restored,@"[ \t]+"," ")==
+            System.Text.RegularExpressions.Regex.Replace(safe,@"[ \t]+"," "),
+            "legacy restoration changed more than declaration alignment");
         Check(manifest.Any(x=>System.Text.Json.JsonSerializer.Serialize(x).Contains("NATIVE_PSM_ORDERED_READS_RETIRED")),
             "legacy batch retirement must be reported");
         Check(!Stage(),"actual migrated PSM repeat");
