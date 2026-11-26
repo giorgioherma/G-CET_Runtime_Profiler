@@ -368,7 +368,7 @@ return UpdateFrame
     Check(ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(locationDemand,out var locationRepeat)&&locationRepeat==locationDemand,
         "native location registration demand repeat");
     Check(ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(locationDemand.Replace(
-        "    __gcetCancelEmptyLocationJob(self)\n    return false","    return false"),out var locationPartial)&&locationPartial==locationDemand,
+        "    __gcetFinishLocationAttach(self)\n    return false","    return false"),out var locationPartial)&&locationPartial==locationDemand,
         "native location partial failure cleanup completion");
     Check(!ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(spatialSource.Replace(
         "self.job=job","self.job=foreignJob"),out _),"unknown scheduler handle ownership refused");

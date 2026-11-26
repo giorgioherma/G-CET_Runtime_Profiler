@@ -563,7 +563,7 @@ end
     }
 
     internal const string SpatialHostPath="0-Engine/modules/GCETNativeLocationHost.lua";
-    private const string EmptyNativeLocationJob="""
+    private const string LegacyEmptyNativeLocationJob="""
 -- G-CET native location registration demand v1
 local function __gcetCancelEmptyLocationJob(self)
   if next(self.owners)~=nil or not self.job then return end
@@ -572,67 +572,120 @@ local function __gcetCancelEmptyLocationJob(self)
   if ok and result~=false and self.job==job then self.job=nil end
 end
 """;
-    // Failed registrations can leave the original 10 Hz Scheduler job
-    // active forever with no owner. Release that exact job; retain existing
-    // cleanup, successful registration timing, and mixed-owner behavior.
+    private const string EmptyNativeLocationJob="""
+-- G-CET native location registration demand v2
+local function __gcetCancelEmptyLocationJob(self)
+  if self.__gcetLocationAttachDepth~=0 and self.__gcetLocationAttachDepth~=nil then return end
+  if next(self.owners)~=nil or not self.job then return end
+  local job=self.job
+  local ok,result=pcall(job.Cancel)
+  if ok and result~=false and self.job==job then self.job=nil end
+end
+local function __gcetFinishLocationAttach(self)
+  self.__gcetLocationAttachDepth=self.__gcetLocationAttachDepth-1
+  __gcetCancelEmptyLocationJob(self)
+end
+""";
+    // Release only a genuinely unowned job, never one still needed by an
+    // outer registration when a native call synchronously reenters attach.
     internal static bool TryNativeLocationRegistrationDemand(string source,out string next)
     {
         next=source;
         var candidate=source;
         var helper=Newlines(source,EmptyNativeLocationJob+"\n\n");
+        var legacy=Newlines(source,LegacyEmptyNativeLocationJob+"\n\n");
         var slot=Newlines(source,"-- G-CET native location registration insertion slot\n");
-        var helperCount=Count(candidate,helper);
+        var helperCount=Count(candidate,helper)+Count(candidate,legacy);
         if(helperCount>1||candidate.Contains(slot,StringComparison.Ordinal))return false;
-        if(helperCount==1)candidate=candidate.Replace(helper,slot,StringComparison.Ordinal);
+        if(helperCount==1)candidate=candidate.Replace(helper,slot,StringComparison.Ordinal).Replace(legacy,slot,StringComparison.Ordinal);
         const string cancel="__gcetCancelEmptyLocationJob(self)";
+        const string finish="__gcetFinishLocationAttach(self)";
+        const string begin="self.__gcetLocationAttachDepth=(self.__gcetLocationAttachDepth or 0)+1";
+        const string schedule="if not self:_schedule() then return false end";
+        const string scheduled="if not self:_schedule() then "+finish+";return false end";
         const string dynamicCleanup="for _,key in ipairs(added) do pcall(native,\"GCETStaticRemoveAnchor\",key) end";
         const string compiledCleanup="for _,key in ipairs(armed) do pcall(native,\"GCETStaticArm\",key,false) end";
         const string tickEmpty="if next(self.owners)==nil then return end";
         const string tickNew="if next(self.owners)==nil then "+cancel+";return end";
-        var code=MaskLuaTrivia(candidate);
-        bool Owns(string functionName,string exact)
+        static MatchCollection Scope(string text,string name)=>Regex.Matches(MaskLuaTrivia(text),
+            @"(?ms)^function Host:"+Regex.Escape(name)+@"\([^\r\n]*\)[ \t]*\r?\n.*?^end[ \t]*(?=\r?$)");
+        static bool HasCode(string text,string anchor)
         {
-            var fn=Regex.Matches(code,@"(?ms)^function Host:"+Regex.Escape(functionName)+
-                @"\([^\r\n]*\)[ \t]*\r?\n.*?^end[ \t]*(?=\r?$)");
-            if(fn.Count!=1)return false;
-            var match=fn[0];
-            return Count(candidate.Substring(match.Index,match.Length),exact)==1;
+            var a=Newlines(text,anchor);
+            var i=text.IndexOf(a,StringComparison.Ordinal);
+            return i>=0&&Count(text,a)==1&&
+                MaskLuaTrivia(text).AsSpan(i,a.Length).SequenceEqual(MaskLuaTrivia(a).AsSpan());
         }
-        if(!Owns("attach",dynamicCleanup)||!Owns("attachCompiled",compiledCleanup)||
-           !Owns("_schedule","if self.job then return true end")||
+        bool Owns(string name,string anchor)
+        {
+            var fn=Scope(candidate,name);
+            return fn.Count==1&&HasCode(candidate.Substring(fn[0].Index,fn[0].Length),anchor);
+        }
+        if(!Owns("_schedule","if self.job then return true end")||
            !Owns("_schedule","self.job=job")||
            !Owns("shutdown","if self.job then pcall(self.job.Cancel);self.job=nil end")||
-           Count(code,"function Host.new(engine)")!=1||
-           Count(candidate,dynamicCleanup)!=1||Count(candidate,compiledCleanup)!=1||
+           Count(MaskLuaTrivia(candidate),"function Host.new(engine)")!=1||
            (!Owns("_tick",tickEmpty)&&!Owns("_tick",tickNew))||
-           Regex.Matches(code,@"\bself\.job\s*=(?!=)").Count!=2)return false;
-        // Each accepted failure path owns the existing anchor rollback.
-        // Normalize independently installed fragments, not unrelated code.
-        foreach(var cleanup in new[]{dynamicCleanup,compiledCleanup})
+           Regex.Matches(MaskLuaTrivia(candidate),@"\bself\.job\s*=(?!=)").Count!=2)return false;
+        foreach(var item in new[]{("attach",dynamicCleanup),("attachCompiled",compiledCleanup)})
         {
-            var old=cleanup+"\n    return false";
-            var current=cleanup+"\n    "+cancel+"\n    return false";
-            if(Count(NormalizeLf(candidate),current)==1)
+            var scopes=Scope(candidate,item.Item1);
+            if(scopes.Count!=1)return false;
+            var scope=scopes[0];
+            var body=candidate.Substring(scope.Index,scope.Length);
+            var cleanup=item.Item2;
+            // Normalize independently present old/new fragments within the
+            // owning function only. No version pin or whole-file rewrite.
+            foreach(var pair in new[]{
+                ("  "+begin+"\n",""),
+                ("  "+scheduled,"  "+schedule),
+                (cleanup+"\n    "+cancel+"\n    return false",cleanup+"\n    return false"),
+                (cleanup+"\n    "+finish+"\n    return false",cleanup+"\n    return false"),
+                ("  "+finish+"\n  return true\nend","  return true\nend")})
             {
-                if(!ReplaceUnique(ref candidate,current,old))return false;
+                if(Count(NormalizeLf(body),pair.Item1)==0)continue;
+                if(!HasCode(body,pair.Item1)||!ReplaceUnique(ref body,pair.Item1,pair.Item2))return false;
             }
-            if(Count(NormalizeLf(candidate),old)!=1)return false;
+            if(!HasCode(body,"  "+schedule)||
+               !HasCode(body,cleanup+"\n    return false")||
+               !HasCode(body,"  return true\nend")||
+               body.Contains("__gcetLocationAttachDepth",StringComparison.Ordinal)||
+               body.Contains("__gcetFinishLocationAttach",StringComparison.Ordinal)||
+               body.Contains("__gcetCancelEmptyLocationJob",StringComparison.Ordinal))return false;
+            var tail=MaskLuaTrivia(body)[body.IndexOf(Newlines(body,"  "+schedule),StringComparison.Ordinal)..];
+            // Exactly the existing schedule refusal, rollback refusal and
+            // successful publication exits; additional custom exits stay stock.
+            if(Regex.Matches(tail,@"\breturn\b").Count!=3||
+               Count(tail,"self.owners[id]=")!=1||
+               !ReplaceUnique(ref body,"  "+schedule,"  "+begin+"\n  "+scheduled)||
+               !ReplaceUnique(ref body,cleanup+"\n    return false",cleanup+"\n    "+finish+"\n    return false")||
+               !ReplaceUnique(ref body,"  return true\nend","  "+finish+"\n  return true\nend"))return false;
+            candidate=candidate.Remove(scope.Index,scope.Length).Insert(scope.Index,body);
         }
         if(Count(NormalizeLf(candidate),tickNew)==1)
             if(!ReplaceUnique(ref candidate,tickNew,tickEmpty))return false;
-        if(Count(candidate,tickEmpty)!=1||
-           candidate.Contains("__gcetCancelEmptyLocationJob",StringComparison.Ordinal)||
-           candidate.Contains("G-CET native location registration demand v1",StringComparison.Ordinal))return false;
-        // Preserve exact successful schedule creation and original cadence.
-        if(!ReplaceUnique(ref candidate,dynamicCleanup+"\n    return false",
-              dynamicCleanup+"\n    "+cancel+"\n    return false")||
-           !ReplaceUnique(ref candidate,compiledCleanup+"\n    return false",
-              compiledCleanup+"\n    "+cancel+"\n    return false")||
-           !ReplaceUnique(ref candidate,tickEmpty,tickNew))return false;
+        if(!Owns("_tick",tickEmpty)||!ReplaceUnique(ref candidate,tickEmpty,tickNew)||
+           Count(candidate,"__gcetCancelEmptyLocationJob")!=1||
+           Count(candidate,"__gcetFinishLocationAttach")!=6||
+           Count(candidate,"__gcetLocationAttachDepth")!=4||
+           candidate.Contains("G-CET native location registration demand v",StringComparison.Ordinal))return false;
         if(helperCount==1)candidate=candidate.Replace(slot,helper,StringComparison.Ordinal);
-        else if(!ReplaceUnique(ref candidate,"function Host.new(engine)",
-              EmptyNativeLocationJob+"\n\nfunction Host.new(engine)"))return false;
+        else if(!ReplaceUnique(ref candidate,"function Host.new(engine)",EmptyNativeLocationJob+"\n\nfunction Host.new(engine)"))return false;
         next=candidate;return true;
+    }
+
+    internal static int TryStageNativeLocationRegistrationDemand(ref FixedZeroEngineBuild framework,List<object> manifest)
+    {
+        if(!framework.Files.TryGetValue(SpatialHostPath,out var locationBytes))return 0;
+        var locationSource=Encoding.UTF8.GetString(locationBytes);
+        if(!TryNativeLocationRegistrationDemand(locationSource,out var locationNext)||locationNext==locationSource)return 0;
+        var files=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
+        files[SpatialHostPath]=Encoding.UTF8.GetBytes(locationNext);
+        framework=framework with{Files=files};
+        manifest.Add(new{type="FRAMEWORK_NATIVE_LOCATION_REGISTRATION_DEMAND",Owner="0-Engine",
+            file=SpatialHostPath,sourceProof=true,policy="RELEASE_UNOWNED_EXISTING_SCHEDULER_JOB",
+            callbackOrCadenceChanged=false,addsRecurringProducer=false});
+        return 1;
     }
 
     private const string SpatialArmHelper="""
@@ -2794,20 +2847,6 @@ end
                 skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
                     RuleId = "0engine-demand-scheduler-idle-context",
                     reason = "Canonical job lifecycle or host context driver not structurally proven; preserve existing dispatch." });
-        }
-        if(framework.Files.TryGetValue(SpatialHostPath,out var locationBytes))
-        {
-            var locationSource=Encoding.UTF8.GetString(locationBytes);
-            if(TryNativeLocationRegistrationDemand(locationSource,out var locationNext)&&locationNext!=locationSource)
-            {
-                var locationFiles=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
-                locationFiles[SpatialHostPath]=Encoding.UTF8.GetBytes(locationNext);
-                framework=framework with{Files=locationFiles};
-                applied++;
-                manifest.Add(new{type="FRAMEWORK_NATIVE_LOCATION_REGISTRATION_DEMAND",Owner="0-Engine",
-                    file=SpatialHostPath,sourceProof=true,policy="RELEASE_UNOWNED_EXISTING_SCHEDULER_JOB",
-                    callbackOrCadenceChanged=false,addsRecurringProducer=false});
-            }
         }
         if (compatible > 0)
         {

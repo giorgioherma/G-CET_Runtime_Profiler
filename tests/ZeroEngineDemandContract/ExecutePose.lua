@@ -296,11 +296,20 @@ do
     local active,created,cancelled,armFailures=0,0,0,0
     local failOwner=1
     local nativeOwners={}
+    local host,sites,cb,nested
     Game={
         GCETStaticReady=function() return true end,
         GCETStaticOwnerCount=function(id) return id>=10 and 2 or 0 end,
         GCETStaticOwnerAnchor=function(id,n)return id*10+n end,
-        GCETStaticAddAnchor=function(id,x,y,z,r,xy,owner) nativeOwners[id]=owner;return true end,
+        GCETStaticAddAnchor=function(id,x,y,z,r,xy,owner)
+            if nested and owner==2 then
+                nested=false
+                assert(not host:attachCompiled(10,2,cb,cb,cb) and active==1 and host.job)
+                host:step() -- nested tick cannot cancel the outer registration's job
+                assert(active==1 and host.job)
+            end
+            nativeOwners[id]=owner;return true
+        end,
         GCETStaticRemoveAnchor=function(id)nativeOwners[id]=nil;return true end,
         GCETStaticArm=function(id,armed)
             if not armed then return true end
@@ -310,15 +319,15 @@ do
         end,
         GCETStaticUnsubscribe=function()return true end
     }
-    local host=assert(dofile(root.."/spatial-location-demand.lua")).new({
+    host=assert(dofile(root.."/spatial-location-demand.lua")).new({
         Register=function()return{Schedule={Every=function(period,opts,fn)
             assert(period==0.10);created=created+1;active=active+1
             local live=true
             return{Cancel=function()if live then live=false;active=active-1;cancelled=cancelled+1 end end}
         end}}end
     })
-    local cb=function()return true end
-    local sites={{x=1,y=2,z=3,radius=4,metric="xyz"}}
+    cb=function()return true end
+    sites={{x=1,y=2,z=3,radius=4,metric="xyz"}}
     assert(not host:attach(1,sites,cb,cb,cb) and active==0 and host.job==nil)
     failOwner=10
     assert(not host:attachCompiled(10,2,cb,cb,cb) and active==0 and host.job==nil)
@@ -329,5 +338,10 @@ do
     assert(created==3 and cancelled==2 and armFailures==3)
     host:shutdown()
     assert(active==0 and cancelled==3 and host.job==nil)
+    failOwner=10;nested=true
+    assert(host:attach(2,sites,cb,cb,cb) and active==1 and host.job)
+    assert(host.__gcetLocationAttachDepth==0 and not nested and host.owners[2])
+    host:shutdown()
+    assert(active==0 and cancelled==4 and host.job==nil)
 end
 print("Native location failed registration: zero unowned scheduled jobs; existing owner survives failure, later attach and shutdown PASS")

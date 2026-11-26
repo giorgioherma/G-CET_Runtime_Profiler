@@ -533,9 +533,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Development-only fixture, not the production runtime pin. Never publish this copy.
-          $run = 45740205250
+          $run = 45742502729
           $meta = (& gh run view $run --repo ${{ github.repository }} --json headSha,status,conclusion | ConvertFrom-Json)
-          if ($LASTEXITCODE -ne 0 -or $meta.headSha -ne '46340fe05046dd8fdc2a85a7d628c3fc2b04f9fd' -or $meta.status -ne 'completed' -or $meta.conclusion -ne 'success') { throw 'EXPERIMENTAL_NATIVE_PROVENANCE' }
+          if ($LASTEXITCODE -ne 0 -or $meta.headSha -ne '78e433a40dba2513fe7207a7089187ed7e4b3c8e' -or $meta.status -ne 'completed' -or $meta.conclusion -ne 'success') { throw 'EXPERIMENTAL_NATIVE_PROVENANCE' }
           $temp = Join-Path $env:RUNNER_TEMP 'gcet-experimental-native'
           $runtime = Join-Path $temp 'resolver'
           New-Item -ItemType Directory -Force -Path $runtime | Out-Null
@@ -544,7 +544,7 @@ jobs:
             gh run download $run --repo ${{ github.repository }} --name gcet-static-native-experimental --dir (Join-Path $temp 'artifact')
             if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_NATIVE_DOWNLOAD' }
             $dll = Join-Path $temp 'artifact/red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll'
-            $expected = 'a1a3aa434d57272c6353f33dfe86ecdd0625854957512d227a72025aaab8111c'
+            $expected = '1419d87e953eaeb6bc166b99fa5ef38856331b7f5ddf5446603bc8c12b28bb06'
             if ((Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'EXPERIMENTAL_NATIVE_HASH' }
             Copy-Item $dll (Join-Path $runtime 'runtime/native/GCETStaticLocations.dll') -Force
             $exe = Join-Path $runtime 'G-CET-Resolver.exe'

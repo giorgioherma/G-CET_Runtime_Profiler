@@ -191,12 +191,13 @@ public static class PassGeneratorService
         var centralDemandTransforms = ZeroEngineDemandSource.TryStage(
             modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
             transformManifest, skipped);
+        var locationDemandTransforms = ZeroEngineDemandSource.TryStageNativeLocationRegistrationDemand(ref fixedRuntime, transformManifest);
         var poseReaderTransforms = ZeroEngineDemandSource.TryStagePose(ref fixedRuntime, transformManifest,
             effectiveRuntime.Native?.HasTypedPoseRead == true,
             effectiveRuntime.Native?.HasSharedSpatialPose == true);
         var frameEmitterTransforms = ZeroEngineDemandSource.TryStageFrameEmitters(ref fixedRuntime, transformManifest);
         var lifecyclePlayerTransforms = ZeroEngineDemandSource.TryStageLifecyclePlayer(modsRoot, ref fixedRuntime, staged, appliedTransformsByFile, transformManifest);
-        centralDemandTransforms += poseReaderTransforms + frameEmitterTransforms + lifecyclePlayerTransforms;
+        centralDemandTransforms += locationDemandTransforms + poseReaderTransforms + frameEmitterTransforms + lifecyclePlayerTransforms;
         var providerSessionTransforms = ZeroEngineDemandSource.TryStageSharedProviderLifecycle(ref fixedRuntime, transformManifest);
         centralDemandTransforms += providerSessionTransforms;
         var sharedDerivedTransforms = ZeroEngineDemandSource.TryStageSharedDerivedProviders(modsRoot, ref fixedRuntime, staged, appliedTransformsByFile, transformManifest);
@@ -211,7 +212,7 @@ public static class PassGeneratorService
         centralDemandTransforms += observerDemandTransforms;
         // The pose reader is a mechanical generic transform, not a semantic rule.
         // It still participates in framework-only generation eligibility.
-        genericInfrastructureTransformCount += centralDemandTransforms - poseReaderTransforms - frameEmitterTransforms - lifecyclePlayerTransforms - sharedDerivedTransforms - providerSessionTransforms;
+        genericInfrastructureTransformCount += centralDemandTransforms - locationDemandTransforms - poseReaderTransforms - frameEmitterTransforms - lifecyclePlayerTransforms - sharedDerivedTransforms - providerSessionTransforms;
 
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
         // typed native forced-live getter plus original fail-open fallback.

@@ -1848,7 +1848,9 @@ try {
     if ($null -eq $locationEntry) { throw 'Generated native location host missing.' }
     $locationReader = [IO.StreamReader]::new($locationEntry.Open())
     try { $locationHost = $locationReader.ReadToEnd() } finally { $locationReader.Dispose() }
-    if ([regex]::Matches($locationHost,'__gcetCancelEmptyLocationJob\(self\)').Count -ne 4 -or
+    if ([regex]::Matches($locationHost,'__gcetCancelEmptyLocationJob\(self\)').Count -ne 3 -or
+        [regex]::Matches($locationHost,'__gcetFinishLocationAttach\(self\)').Count -ne 7 -or
+        $locationHost -notmatch 'self\.__gcetLocationAttachDepth~=0' -or
         $locationHost -notmatch 'if next\(self\.owners\)~=nil or not self\.job then return end' -or
         $locationHost -notmatch 'pcall\(job\.Cancel\)' -or
         [regex]::Matches($locationHost,'Schedule\.Every\(0\.10,').Count -ne 1) {
