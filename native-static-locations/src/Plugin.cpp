@@ -171,7 +171,10 @@ namespace {
         f->code++;*out=1;
     }
     void PlayerCapabilities(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
-        f->code++;*out=1|2|4|8|16|32|64;
+        // Bit 128 opts display-only consumers into the epoch-guarded frame
+        // sample. This is not an assertion of exact cross-phase gameplay
+        // freshness. All callers share the existing position producer.
+        f->code++;*out=1|2|4|8|16|32|64|128;
     }
     void PlayerConsumerCount(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
         f->code++;*out=static_cast<int32_t>(g_playerSnapshot.SubscriberCount());

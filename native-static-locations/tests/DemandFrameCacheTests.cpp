@@ -48,5 +48,29 @@ int main(){
  };
  CHECK(!cache.Read(104,true,nestedFailure,p,true)&&p.w==0);
  CHECK(cache.Read(106,true,engine,p)&&p.w==9);
+ // Independent display consumers use the SAME existing native producer.
+ // DAV needs three coordinates, DriveBus needs the complete vector.
+ // A single panel reads once; no panel or anchor means no engine read.
+ DemandFrameCache shared;
+ unsigned physicalReads=0;
+ auto produce=[&](Position4& value){++physicalReads;value={12,34,56,0.75f};return true;};
+ CHECK(shared.Reads()==0&&physicalReads==0);
+ Position4 dav{},bus{};
+ CHECK(shared.Read(200,true,produce,dav));
+ CHECK(shared.Read(200,true,produce,bus));
+ CHECK(physicalReads==1&&shared.Reads()==1&&shared.Hits()==1&&dav.x==bus.x&&dav.w==bus.w);
+ // The existing RunningUpdate producer can seed its own sampled position.
+ ++physicalReads;
+ shared.Seed(201,true,{13,35,57,0.5f});
+ CHECK(shared.Read(201,true,produce,bus)&&shared.Read(201,true,produce,dav));
+ CHECK(physicalReads==2&&shared.Reads()==1&&bus.w==0.5f&&dav.y==35);
+ // Distinct engine frames and explicit exact/live requests must still read.
+ CHECK(shared.Read(202,true,produce,dav)&&physicalReads==3);
+ CHECK(shared.Read(202,true,produce,bus,true)&&physicalReads==4);
+ CHECK(shared.Read(202,false,produce,dav)&&physicalReads==5);
+ CHECK(shared.Read(202,false,produce,bus)&&physicalReads==6);
+ shared.Reset();
+ CHECK(shared.Read(202,true,produce,dav)&&physicalReads==7);
+ std::cout<<"Shared frame position production: two panel consumers 2 -> 1; existing native seed 2 -> 0 extra acquisitions; exact and unknown-frame reads retained PASS\n";
  std::cout<<"DemandFrameCache PASS\n";
 }
