@@ -2380,6 +2380,32 @@ public static class PassGeneratorService
     internal static string CanonicalPlayerProviderSource() =>
         string.Join("\n",BuildSharedProviderHeader(SharedProviderRecipes["PLAYER"]));
 
+    internal static bool HasVerifiedPlayerCoordinator(string root,string relative,string source,
+        Dictionary<string,byte[]> staged)
+    {
+        if(!source.Contains(GenericReadCoordinatorSource.Marker,StringComparison.Ordinal))return false;
+        var name=GenericReadCoordinatorSource.WorkerName(relative);
+        var module="GCET_Semantic/"+Path.GetFileNameWithoutExtension(name);
+        var normalized=source.Replace("\r\n","\n",StringComparison.Ordinal);
+        var bridge=GenericReadCoordinatorSource.Marker+module+"\n";
+        var import="local __gcetNativeReads = require(\""+module+"\")";
+        if(normalized.Split(bridge,StringSplitOptions.None).Length!=2||
+           normalized.Split(import,StringSplitOptions.None).Length!=2)return false;
+        var workerRel=relative.Split('/')[0]+"/GCET_Semantic/"+name;
+        var path=Path.Combine(root,workerRel.Replace('/',Path.DirectorySeparatorChar));
+        var worker=staged.TryGetValue(workerRel,out var bytes)?NativeReadReuseSource.Decode(bytes):
+            File.Exists(path)?File.ReadAllText(path):"";
+        GenericReadCoordinatorSource.TryRewrite(root,relative,source,staged,
+            key=>SharedProviderRecipes.TryGetValue(key,out var recipe)?
+                BuildSharedProviderHeader(recipe):Array.Empty<string>(),
+            out _,out _,out _,out _,out _,out _,out var reason);
+        return reason is null&&GenericReadCoordinatorSource.TryFindProviderBlock(
+            worker,"PLAYER","GetPlayer",CanonicalPlayerProviderSource(),out _,out _)&&
+            Regex.IsMatch(worker,@"\bGetPlayer\s*=\s*__gcetGetPlayer\b")&&
+            !Regex.IsMatch(NativeReadReuseSource.MaskNonCode(source.Replace(import,"",StringComparison.Ordinal)),
+                @"\blocal\s+__gcetNativeReads\b|\b__gcetNativeReads(?:\s*\.\s*GetPlayer)?\s*=(?!=)|\bfunction[^\(\r\n]*\([^)]*\b__gcetNativeReads\b[^)]*\)");
+    }
+
     private static IEnumerable<string> BuildSharedProviderHeader(
         SharedProviderRecipe recipe)
     {

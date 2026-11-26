@@ -447,7 +447,31 @@ return {first, second}
         "exact pair CRLF source convergence");
     Check(!ZeroEngineDemandSource.TryComposeExactPosePairs("local Game = foreign\n"+exactPairsSource,true,out _,out _),
         "shadowed Game facade cannot authorize typed pose");
-    var psmNames=new[]{"locomotion","locomotionDetailed","upperBody","weapon","vision","swimming","sceneTier","takedown","landing","bodyCarrying","carrying","mounted"};
+    var inlinePlayerProvider="""
+-- G-CET shared provider: PLAYER
+local __gcetSharedPlayerProvider = nil
+local function __gcetGetPlayer()
+    return Game.GetPlayer()
+end
+""".Replace("\r\n","\n",StringComparison.Ordinal);
+    var composedPair=inlinePlayerProvider+"\n\n"+exactPairsGenerated.Replace(
+        "Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
+    Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(composedPair,true,out var composedPairRepeat,out _,inlinePlayerProvider)&&
+        composedPairRepeat==composedPair,"downstream inline shared provider must not undo generated pose pairs");
+    var formattedProvider=inlinePlayerProvider.Replace("    return","\n  return",StringComparison.Ordinal);
+    var formattedPair=formattedProvider+"\n\n"+exactPairsGenerated.Replace("Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
+    Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(formattedPair,true,out var formattedPairRepeat,out _,inlinePlayerProvider)&&
+        formattedPairRepeat==formattedPair,"compatible provider formatting must converge");
+    var coordinatedPair="-- G-CET generic native reads coordinator:v1 GCET_Semantic/example\n"+
+        "local __gcetNativeReads = require(\"GCET_Semantic/example\")\n"+
+        exactPairsGenerated.Replace("Game.GetPlayer()","__gcetNativeReads.GetPlayer()",StringComparison.Ordinal);
+    Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(coordinatedPair,true,out var coordinatedPairRepeat,out _,null,true)&&
+        coordinatedPairRepeat==coordinatedPair,"verified downstream coordinator must retain existing pose pairs");
+    var coordinatorStock=coordinatedPair[..coordinatedPair.IndexOf("local __gcetExactEulerNative",StringComparison.Ordinal)]+
+        exactPairsSource.Replace("Game.GetPlayer()","__gcetNativeReads.GetPlayer()",StringComparison.Ordinal);
+    Check(ZeroEngineDemandSource.TryComposeExactPosePairs(coordinatorStock,true,out var coordinatorGenerated,out var coordinatorPairs,null,true)&&
+        coordinatorPairs==2&&coordinatorGenerated==coordinatedPair,"known coordinator stays at its original prefix");
+        var psmNames=new[]{"locomotion","locomotionDetailed","upperBody","weapon","vision","swimming","sceneTier","takedown","landing","bodyCarrying","carrying","mounted"};
     var psmKeys=new[]{"Locomotion","LocomotionDetailed","UpperBody","Weapon","Vision","Swimming","SceneTier","Takedown","Landing","BodyCarrying","Carrying","MountedToVehicle"};
     var psmReadSource="local BlackboardCache = {}\nlocal playerBB\nlocal __gcetPsmFields = {}\n"+
         string.Join("\n",psmKeys.Select((key,i)=>"__gcetPsmFields."+key+" = "+(i+1)))+

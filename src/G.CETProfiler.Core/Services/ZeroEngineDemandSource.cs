@@ -326,11 +326,12 @@ end
     // The local binding must still exist at the second read and cannot
     // have been captured by any intervening closure. Balanced intervening
     // blocks are allowed, but never movement of either getter past them.
-    private static bool StableLocalPlayer(string code,int at,string name,bool sharedGetter)
+    private static bool StableLocalPlayer(string code,int at,string name,bool sharedGetter,bool coordinatorGetter)
     {
         var id=Regex.Escape(name);
         var origin=Regex.Matches(code[..at],@"(?m)^[ \t]*local[ \t]+"+id+
             @"[ \t]*=[ \t]*(?:Game\s*\.\s*GetPlayer"+(sharedGetter?"|__gcetGetPlayer":"")+
+            (coordinatorGetter?@"|__gcetNativeReads\s*\.\s*GetPlayer":"")+
             @")\s*\(\s*\)[ \t]*(?=\r?$)");
         if(origin.Count==0)return false;
         var last=origin[^1];
@@ -385,7 +386,7 @@ end
     private static bool IsCodeSpan(string code,Match m,Regex shape)=>
         shape.IsMatch(code.Substring(m.Index,m.Length));
     internal static bool TryComposeExactPosePairs(string source,bool enabled,out string next,out int sites,
-        string? canonicalPlayerProvider=null)
+        string? canonicalPlayerProvider=null,bool coordinatorGetter=false)
     {
         next=source;sites=0;
         const string slot="-- G-CET exact Euler insertion slot\n";
@@ -416,8 +417,15 @@ end
             // Local Game bindings or replacement of the facade are unknown.
             if(Regex.IsMatch(code,@"\blocal\s+Game\b|\bGame\s*(?:\.\s*GetPlayer\s*)?=(?!=)|\bfunction[^\(\r\n]*\([^)]*\bGame\b[^)]*\)"))
                 return false;
-            var knownGetter=canonicalPlayerProvider is null?null:Newlines(source,canonicalPlayerProvider);
-            var sharedGetter=knownGetter is not null&&knownGetter.Length>0&&Count(candidate,knownGetter)==1&&
+            // The canonical provider may have been inserted by a later generic
+            // stage with different blank separators or indentation.
+            var knownGetter=canonicalPlayerProvider is null?null:NormalizeLf(canonicalPlayerProvider).TrimEnd();
+            var inline=Regex.Matches(NormalizeLf(candidate),
+                @"(?m)^-- G-CET shared provider: PLAYER[ \t]*\n[\s\S]*?^end[ \t]*(?=\n|$)");
+            static string[] Lines(string value)=>NormalizeLf(value).Split('\n').Select(l=>l.Trim())
+                .Where(l=>l.Length!=0).ToArray();
+            var sharedGetter=knownGetter is not null&&knownGetter.Length>0&&inline.Count==1&&
+                Lines(inline[0].Value).SequenceEqual(Lines(knownGetter),StringComparer.Ordinal)&&
                 Regex.Matches(code,@"\blocal\s+function\s+__gcetGetPlayer\s*\(").Count==1&&
                 !Regex.IsMatch(code,@"\b__gcetGetPlayer\s*=(?!=)|\bfunction[^\(\r\n]*\([^)]*\b__gcetGetPlayer\b[^)]*\)");
             // The source match itself must be code, not quoted or commented
@@ -425,7 +433,7 @@ end
             var pairs=EulerStockPair.Matches(candidate).Cast<Match>().Where(m=>
                 IsCodeSpan(code,m,EulerStockPair)&&
                 new[]{"p","e","r"}.Select(k=>m.Groups[k].Value).Distinct(StringComparer.Ordinal).Count()==3&&
-                StableLocalPlayer(code,m.Index,m.Groups["r"].Value,sharedGetter)).ToArray();
+                StableLocalPlayer(code,m.Index,m.Groups["r"].Value,sharedGetter,coordinatorGetter)).ToArray();
             b=new StringBuilder(candidate);
             foreach(var m in pairs.Reverse())
             {
@@ -436,7 +444,14 @@ end
             candidate=b.ToString();sites=pairs.Length;
         }
         var header=sites>0?Newlines(source,ExactEulerState+"\n"+ExactEulerHelper+"\n\n"):"";
-        candidate=hasHeader?candidate.Replace(slot,header,StringComparison.Ordinal):header+candidate;
+        if(hasHeader)candidate=candidate.Replace(slot,header,StringComparison.Ordinal);
+        else if(header.Length>0&&coordinatorGetter)
+        {
+            var bridge=Regex.Match(candidate,@"(?m)^local __gcetNativeReads = require\([^\r\n]*\)[ \t]*\r?\n");
+            if(!bridge.Success)return false;
+            candidate=candidate.Insert(bridge.Index+bridge.Length,header);
+        }
+        else candidate=header+candidate;
         next=candidate;
         if(next==source){sites=0;return false;}
         return true;

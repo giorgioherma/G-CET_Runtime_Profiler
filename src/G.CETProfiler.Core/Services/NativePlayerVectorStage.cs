@@ -246,7 +246,8 @@ end
                !CetModPresence.HasInstalledSource(root,relative))continue;
             var first=relative.Split('/')[0];
             if(first.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
-               first.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase))
+               first.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase) ||
+               relative.Contains("/GCET_Semantic/",StringComparison.OrdinalIgnoreCase))
                 continue;
             var original=System.IO.File.ReadAllBytes(path);
             if(original.Length>2_000_000 || original.Any(b=>b==0))continue;
@@ -265,7 +266,8 @@ end
                     skipped.Add(new{type="NATIVE_PLAYER_POSITION_FRAME_DISPLAY",file=key,reason="LUA_LOCAL_LIMIT"});
                 }
             }
-            var pairChanged=ZeroEngineDemandSource.TryComposeExactPosePairs(result,typedPositionEuler,out var posePairs,out var pairSites,canonicalPlayerProvider);
+            var coordinatorGetter=typedPositionEuler&&PassGeneratorService.HasVerifiedPlayerCoordinator(root,key,result,staged);
+            var pairChanged=ZeroEngineDemandSource.TryComposeExactPosePairs(result,typedPositionEuler,out var posePairs,out var pairSites,canonicalPlayerProvider,coordinatorGetter);
             if(pairChanged)
             {
                 if(LuaLocalBudgetAnalyzer.Analyze(posePairs).MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
