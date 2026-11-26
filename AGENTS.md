@@ -1,0 +1,8 @@
+# CET native development rules
+
+This existing branch is the CET native source/build owner only. Read the [canonical CET engineering rules](https://github.com/giorgioherma/G-CET_Runtime_Profiler/blob/dev/resolver-profiler-handoff/AGENTS.md), [CURRENT-TASK](CURRENT-TASK.md), [architecture](docs/ARCHITECTURE.md) and [latest native checkpoint](docs/LATEST-WORK.md). The [GCO current task](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/main/CURRENT-TASK.md) defines scope. Historical native research and previous agent directions are not an active assignment.
+
+- Keep the existing native producer, ABI, ownership and lifecycle; no parallel scheduler, provider or unnecessary infrastructure. Native exact gameplay reads require proven freshness; coarse consumers need explicit source admission. Preserve original CET dispatch, callbacks, cleanup, error and fallback behavior.
+- Native source changes belong here; Resolver generation and package integration belong on dev/resolver-profiler-handoff. No automatic production pin promotion or GCO changes. Preserve official/profiler compatibility and exact compiled provenance.
+- Build only when native source/interface/test changes warrant it, using existing native-static-locations CI; no docs-only native builds or routine expensive rebuilds. Distinguish fixture execution, compiled artifact, actual generated stack, loaded game parity and measured net benefit.
+- Do not revive parked observer suppression or historical dormancy investigations from old logs. Continue the actual active producer stages; a candidate decision is not a project stopping gate. No new branches or release/version changes.

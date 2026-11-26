@@ -1,0 +1,3 @@
+# CET native architecture
+
+The [canonical CET architecture](https://github.com/giorgioherma/G-CET_Runtime_Profiler/blob/dev/resolver-profiler-handoff/docs/ARCHITECTURE.md) and [native service reference](../native-static-locations/README.md) define the current shared producer design. Preserve one native source/build owner, existing DemandFrameCache/StaticIndex/PositionCoordinator and existing Scheduler demand ownership in the Resolver. Do not substitute cached coarse state for exact live requests without source/lifecycle/phase proof. Native observations and frame/receiver checks must not add more hot-path work than they remove. Existing native service tests, compiled ABI and exact provenance remain required. Historical experiments are not implementation mandates.
