@@ -30,8 +30,14 @@ public:
             out=value_;++hits_;return true;
         }
         ++reads_;
+        const auto generation=generation_;
         Position4 current{};
-        if(!sample(current)||!Finite(current)){
+        const bool sampled=sample(current);
+        // An engine call can re-enter the producer or a session transition.
+        // Do not republish an old epoch, and do not discard a valid sample
+        // already installed by a nested call in the new epoch.
+        if(generation_!=generation){out={};return false;}
+        if(!sampled||!Finite(current)){
             // Never return the last known vector after a failed read.
             Reset();out={};return false;
         }

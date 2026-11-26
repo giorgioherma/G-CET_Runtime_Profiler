@@ -101,13 +101,17 @@ namespace {
             return false;
         }
         // Exactly one native player RTTI read, regardless of active clients.
+        const auto generation=g_onDemandPosition.Generation();
         float x=0,y=0,z=0,w=0;
         const int32_t code=SamplePlayer(x,y,z,w);
-        g_lastPlayerCode=code;
+        if(g_onDemandPosition.Generation()!=generation)return false;
         // Share the already-performed native engine read with same-frame
         // CET callers. If frame RTTI is unavailable, do not seed the cache.
         uint64_t currentFrame=0;
-        if(code==0 && ReadFrameNumber(currentFrame))
+        const bool gotFrame=code==0 && ReadFrameNumber(currentFrame);
+        if(g_onDemandPosition.Generation()!=generation)return false;
+        g_lastPlayerCode=code;
+        if(gotFrame)
             g_onDemandPosition.Seed(currentFrame,true,{x,y,z,w});
         else if(code!=0)
             g_onDemandPosition.Reset();
@@ -232,11 +236,15 @@ namespace {
         f->code++;
         *out=RED4ext::Vector4{};
         g_positionLastReadValid=false;
+        const auto generation=g_onDemandPosition.Generation();
         uint64_t frame=0;
         bool gotFrame=ReadFrameNumber(frame);
         gcet::static_locations::Position4 pos{};
-        if(!g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos))
+        if(g_onDemandPosition.Generation()!=generation||
+           !g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos)){
+            g_positionLastReadValid=false;
             return;
+        }
         out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
         g_positionLastReadValid=true;
     }
@@ -244,11 +252,15 @@ namespace {
                            RED4ext::Vector4* out,int64_t) {
         f->code++;*out=RED4ext::Vector4{};
         g_positionLastReadValid=false;
+        const auto generation=g_onDemandPosition.Generation();
         uint64_t frame=0;
         bool gotFrame=ReadFrameNumber(frame);
         gcet::static_locations::Position4 pos{};
-        if(!g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos,true))
+        if(g_onDemandPosition.Generation()!=generation||
+           !g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos,true)){
+            g_positionLastReadValid=false;
             return;
+        }
         out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
         g_positionLastReadValid=true;
     }
