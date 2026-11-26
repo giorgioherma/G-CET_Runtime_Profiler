@@ -119,11 +119,17 @@ void StaticIndex::ResetSession() {
     for (auto& entry : entries_) { entry.inside = false; entry.seen = 0; }
     stamp_ = 0;
 }
-bool StaticIndex::SetArmed(int32_t id, bool armed) {
+bool StaticIndex::SetArmed(int32_t id, bool armed,bool coarseSpatial) {
     const auto it = ids_.find(id);
     if (it == ids_.end()) return false;
     auto& e = entries_[it->second];
     if (e.removed) return false;
+    const bool wasCoarse=e.armed&&e.coarseSpatial;
+    const bool nextCoarse=armed&&coarseSpatial;
+    if(wasCoarse!=nextCoarse){
+        if(nextCoarse)++coarseActiveCount_;else --coarseActiveCount_;
+    }
+    e.coarseSpatial=nextCoarse;
     if (e.armed != armed) {
         if (!armed && positioned_) Emit(e,-1); // disarm becomes UNKNOWN, never FAR
         e.armed = armed;
@@ -151,7 +157,8 @@ bool StaticIndex::RemoveEntry(uint32_t i) {
     if (e.removed) return false;
     if (positioned_) Emit(e,-1);
     if (e.armed) --activeCount_;
-    e.removed=true; e.armed=false; e.inside=false;
+    if(e.coarseSpatial)--coarseActiveCount_;
+    e.removed=true; e.armed=false; e.inside=false;e.coarseSpatial=false;
     dirty_=true;
     return true;
 }

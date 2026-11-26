@@ -33,7 +33,7 @@ public:
     bool AddAnchor(const Anchor& anchor);
     void Clear();
     void ResetSession();
-    bool SetArmed(int32_t id, bool armed);
+    bool SetArmed(int32_t id, bool armed, bool coarseSpatial=false);
     // Runtime removal is a tombstone, not a spatial reindex. The next Resolver
     // manifest physically omits the removed static locations.
     bool RemoveAnchor(int32_t id);
@@ -65,6 +65,7 @@ public:
     // O(1) count of armed, non-tombstoned anchors. The Running-state hook
     // can sleep entirely when no source has activated a location.
     size_t ActiveCount() const { return activeCount_; }
+    bool AllActiveCoarseSpatial() const {return activeCount_!=0&&coarseActiveCount_==activeCount_;}
 
 private:
     struct Entry {
@@ -76,6 +77,7 @@ private:
         // position evaluation, including when the player is stationary.
         uint64_t firstValidEvaluation = 0;
         uint32_t seen = 0;
+        bool coarseSpatial = false;
     };
     static constexpr int kCell = 128;
     static constexpr float kMaxRadius = 1024.0f;
@@ -107,7 +109,7 @@ private:
     float x_ = 0, y_ = 0, z_ = 0;
     bool positioned_ = false;
     bool dirty_ = true;
-    size_t activeCount_ = 0;
+    size_t activeCount_ = 0,coarseActiveCount_=0;
 };
 
 // Frozen little-endian disk format: header GCAS (4), version(4), count(4), reserved(4).

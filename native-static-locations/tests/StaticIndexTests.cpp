@@ -23,6 +23,23 @@ int main(int argc,char** argv) {
     GCET_ASSERT(!s.Load(duplicate));
     GCET_ASSERT(s.Count()==4); // transactional failed Load
     GCET_ASSERT(s.ActiveCount()==0);
+    // A foreign exact anchor blocks cohort reuse even when every other
+    // registered owner explicitly accepted coarse spatial freshness.
+    StaticIndex cohort;
+    GCET_ASSERT(cohort.Load(input));
+    GCET_ASSERT(!cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(1,true,true)&&cohort.SetArmed(2,true,true));
+    GCET_ASSERT(cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(3,true)&&!cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(3,false)&&cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(1,true)&&!cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(1,true,true)&&cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(1,true,true)&&cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.RemoveOwner(11)&&cohort.AllActiveCoarseSpatial());
+    cohort.ResetSession();
+    GCET_ASSERT(cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.SetArmed(2,false)&&!cohort.AllActiveCoarseSpatial());
+    GCET_ASSERT(cohort.ActiveCount()==0);
 
     // Optional manifest policy: absent permits source-owned registration,
     // malformed present data must NEVER quietly become an empty registry.

@@ -28,7 +28,6 @@ namespace {
     gcet::static_locations::DemandFrameCache g_onDemandPosition;
     bool g_positionLastReadValid=false;
     uint64_t g_spatialPhysicalReads=0;
-    bool g_sharedSpatialHost=false;
     gcet::static_locations::DiagnosticProbe g_probe(g_index,g_coordinator);
     const RED4ext::v1::Logger* g_logger=nullptr;
     RED4ext::v1::PluginHandle g_handle{};
@@ -104,7 +103,7 @@ namespace {
     // frame freshness. Snapshot subscribers and diagnostic probes retain
     // the exact original native acquisition phase.
     bool SharedSpatialDemand(){
-        return g_sharedSpatialHost&&g_loaded&&g_index.ActiveCount()>0&&
+        return g_loaded&&g_index.AllActiveCoarseSpatial()&&
                !g_playerSnapshot.HasDemand()&&!g_autoProbe&&g_probe.Id()==0;
     }
     bool RunningEnter(RED4ext::CGameApplication*){
@@ -364,15 +363,6 @@ namespace {
         frame->code++;
         *out = g_loaded;
     }
-    void SharedSpatialHost(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,bool* out,int64_t){
-        bool enabled=false;RED4ext::GetParameter(frame,&enabled);frame->code++;
-        // Explicit host lifecycle, default OFF for existing/foreign callers.
-        if(g_sharedSpatialHost!=enabled){
-            g_sharedSpatialHost=enabled;
-            g_onDemandPosition.Reset();g_positionLastReadValid=false;
-        }
-        *out=g_loaded;
-    }
     void Count(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, int32_t* out, int64_t) {
         frame->code++;
         *out = g_loaded ? static_cast<int32_t>(g_index.Count()) : 0;
@@ -383,6 +373,11 @@ namespace {
         RED4ext::GetParameter(frame, &armed);
         frame->code++;
         *out = g_loaded && g_index.SetArmed(id, armed);
+    }
+    void ArmCoarseSpatial(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, bool* out, int64_t) {
+        int32_t id=0;bool armed=false;
+        RED4ext::GetParameter(frame,&id);RED4ext::GetParameter(frame,&armed);frame->code++;
+        *out=g_loaded&&g_index.SetArmed(id,armed,true);
     }
     void Update(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, int32_t* out, int64_t) {
         float x=0,y=0,z=0;
@@ -547,9 +542,6 @@ namespace {
         const char* indexNames[]={"index"};
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
-        const char* sharedNames[]={"enabled"};
-        const char* sharedTypes[]={"Bool"};
-        RegisterFunction("GCETStaticSharedSpatialHostV1",SharedSpatialHost,"Bool",sharedNames,sharedTypes,1);
         const char* observerNames[]={"klass","method"};
         const char* observerTypes[]={"CName","CName"};
         const char* demandNames[]={"handle","active"};
@@ -570,6 +562,7 @@ namespace {
         RegisterFunction("GCETStaticCount",Count,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticResetSession",StartSession,nullptr,nullptr,nullptr,0);
         RegisterFunction("GCETStaticArm",Arm,"Bool",armNames,armTypes,2);
+        RegisterFunction("GCETStaticArmCoarseSpatialV1",ArmCoarseSpatial,"Bool",armNames,armTypes,2);
         RegisterFunction("GCETStaticUpdatePlayer",Update,"Int32",positionNames,positionTypes,3);
         RegisterFunction("GCETStaticState",State,"Int32",idNames,intTypes,1);
         RegisterFunction("GCETStaticChangeCount",ChangeCount,"Int32",nullptr,nullptr,0);
@@ -693,7 +686,6 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         gcet::producer::ResetProducerReads();
         gcet::cet_dispatch::RetireObserver();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
-        g_sharedSpatialHost=false;
         g_playerSnapshot.Exit();g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
         g_logger=nullptr;
     }
