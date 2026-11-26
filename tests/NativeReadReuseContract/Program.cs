@@ -1439,7 +1439,7 @@ try
                 ImGui.Text("X:" .. x .. ", Y:" .. y .. ", Z:" .. z)
             end
         end
-        """.Replace("\n","\r\n",StringComparison.Ordinal);
+        """.Replace("\r\n","\n",StringComparison.Ordinal).Replace("\n","\r\n",StringComparison.Ordinal);
     string LiveDisplay(string source)
     {
         object?[] args=[source,null,0];
