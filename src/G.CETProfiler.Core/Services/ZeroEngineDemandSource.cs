@@ -27,12 +27,16 @@ internal static class ZeroEngineDemandSource
             if (Count(source, "function demand.IsDue(") == 1 &&
                 Count(source, "function demand.TrackFrame(") == 1)
             {
-                var canonical = Controller;
+                // C# multiline literals inherit the checkout's line endings.
+                // Normalize before finding boundaries (Windows CRLF included).
+                var canonical = NormalizeLf(Controller);
                 var start = canonical.IndexOf("    function demand.IsDue(", StringComparison.Ordinal);
+                var trackStart = canonical.IndexOf("    function demand.TrackFrame(", StringComparison.Ordinal);
+                if (start < 0 || trackStart < 0 || trackStart >= start) return true;
                 var end = canonical.IndexOf("\n\n    Scheduler.Demand = demand", start, StringComparison.Ordinal);
+                if (end <= start) return true;
                 var current = canonical[start..end];
                 var previous = current.Replace("\n"+EveryFrameFastPath, "", StringComparison.Ordinal);
-                var trackStart = canonical.IndexOf("    function demand.TrackFrame(", StringComparison.Ordinal);
                 var track = canonical[trackStart..start].TrimEnd();
                 if (Count(NormalizeLf(source), track) == 1)
                     ReplaceUniqueLines(ref next, previous, current);
