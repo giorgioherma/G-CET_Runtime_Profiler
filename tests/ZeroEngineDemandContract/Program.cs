@@ -478,16 +478,16 @@ end
         "\nfunction BlackboardCache.Update(player)\n    if not playerBB then return end\n"+
         string.Join("\n",psmNames.Select((name,i)=>"    local "+name+" = playerBB:"+(i==11?"GetBool":"GetInt")+"(__gcetPsmFields."+psmKeys[i]+")"))+
         "\n    publish("+string.Join(", ",psmNames)+")\nend\nfunction BlackboardCache.Attach(board) playerBB = board end\nreturn BlackboardCache\n";
-    Check(ZeroEngineDemandSource.TryComposePsmBatches(psmReadSource,out var psmBatchGenerated,out var psmBatchCount)&&psmBatchCount==3,
+    Check(ZeroEngineDemandSource.TryComposeLegacyPsmBatchFixture(psmReadSource,out var psmBatchGenerated,out var psmBatchCount)&&psmBatchCount==3,
         "12 PSM state reads -> three exact ordered crossings");
     Check(ZeroEngineDemandSource.TryNormalizePsmBatches(psmBatchGenerated,out var psmPlain)&&psmPlain==psmReadSource&&
-        ZeroEngineDemandSource.TryComposePsmBatches(psmPlain,out var psmAgain,out _)&&psmAgain==psmBatchGenerated,
+        ZeroEngineDemandSource.TryComposeLegacyPsmBatchFixture(psmPlain,out var psmAgain,out _)&&psmAgain==psmBatchGenerated,
         "PSM old ABI and repeated composition");
     Check(ZeroEngineDemandSource.TryNormalizePsmBatches(psmBatchGenerated.Replace(
         "local __gcetPsmBatchInt, __gcetPsmBatchBool, __gcetPsmBatchResolved\n",""),out var psmPartial)&&
         psmPartial==psmReadSource,"PSM partial state normalization");
     var psmDrift=psmReadSource.Replace("    local weapon =","    observeIntermediate()\n    local weapon =");
-    Check(ZeroEngineDemandSource.TryComposePsmBatches(psmDrift,out var psmDriftOutput,out var psmDriftBatches)&&
+    Check(ZeroEngineDemandSource.TryComposeLegacyPsmBatchFixture(psmDrift,out var psmDriftOutput,out var psmDriftBatches)&&
         psmDriftBatches==2&&psmDriftOutput.Contains("observeIntermediate()"),
         "PSM groups never cross intervening gameplay calls");
     if(privateSource)
@@ -547,6 +547,7 @@ end
         File.WriteAllText(Path.Combine(root,"exact-pairs-generated.lua"),exactPairsGenerated);
         File.WriteAllText(Path.Combine(root,"psm-original.lua"),psmReadSource);
         File.WriteAllText(Path.Combine(root,"psm-generated.lua"),psmBatchGenerated);
+        File.WriteAllText(Path.Combine(root,"psm-restored.lua"),psmPlain);
         var posePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
         posePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecutePose.lua");
         posePsi.ArgumentList.Add(root);

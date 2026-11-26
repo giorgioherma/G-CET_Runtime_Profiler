@@ -527,7 +527,10 @@ end
         plain=hadHeader?candidate.Replace(slot,"",StringComparison.Ordinal):candidate;
         return true;
     }
-    internal static bool TryComposePsmBatches(string plain,out string next,out int batches)
+    // Construct the exact historical experimental form for migration and
+    // native-ABI contract fixtures only. Never called by the live generator:
+    // the current owner has no stable board/key contract across getters.
+    internal static bool TryComposeLegacyPsmBatchFixture(string plain,out string next,out int batches)
     {
         next=plain;batches=0;
         var code=MaskLuaTrivia(plain);

@@ -557,16 +557,18 @@ jobs:
             $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
             $pose = @($m.transforms | Where-Object { $_.type -eq 'NATIVE_EXACT_POSITION_EULER' })
             $psm = @($m.transforms | Where-Object { $_.type -eq 'NATIVE_PSM_ORDERED_READS' })
-            if ($pose.Count -lt 2 -or $psm.Count -lt 1) { throw "EXPERIMENTAL_PRODUCER_COVERAGE: pose=$($pose.Count), psm=$($psm.Count)" }
+            if ($pose.Count -lt 2 -or $psm.Count -ne 0) { throw "EXPERIMENTAL_PRODUCER_COVERAGE: pose=$($pose.Count), unsafe PSM batches=$($psm.Count)" }
             $overlay = Join-Path $temp 'overlay'
             Expand-Archive -LiteralPath $zip -DestinationPath $overlay
+            $board = Get-Content -Raw -LiteralPath (Join-Path $overlay 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/BlackboardCache2.lua')
+            if ($board.Contains('__gcetReadPsmBatch') -or ([regex]::Matches($board,'playerBB:GetInt\(')).Count -ne 11 -or ([regex]::Matches($board,'playerBB:GetBool\(')).Count -ne 1 -or !$board.Contains('__gcetPsmFields.Weapon')) { throw 'EXPERIMENTAL_PSM_EXACT_RECEIVER_REQUIRED' }
             $emitted = Join-Path $overlay 'red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll'
             if ((Get-FileHash -LiteralPath $emitted -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'EXPERIMENTAL_OUTPUT_DLL_HASH' }
             node tests/ValidateOriginalStackPass.cjs $mods $overlay $manifest
             if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_ORIGINAL_STACK_OUTPUT_CHECK' }
             node tests/ValidateGeneratedLuaInvariants.cjs $overlay
             if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_LUA_INVARIANTS' }
-            Write-Host "Experimental generation: transforms=$($m.transforms.Count), files=$($m.files.Count), ordered pose=$($pose.Count), ordered PSM=$($psm.Count)"
+            Write-Host "Experimental generation: transforms=$($m.transforms.Count), files=$($m.files.Count), ordered pose=$($pose.Count), PSM exact reentrant path (12 reads), unsafe batches=$($psm.Count)"
             ./tests/OriginalSourceSecondPassContract.ps1 -ResolverExe $exe -OriginalMods $mods -Capture $capture -FirstOverlayRoot $overlay
           } finally {
             Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

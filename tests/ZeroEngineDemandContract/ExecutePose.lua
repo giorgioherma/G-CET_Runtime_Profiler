@@ -241,3 +241,45 @@ for _,mode in ipairs({"complete","unsupported","missing","throws"}) do
     assert(attempts==(mode=="missing" and 0 or expected))
 end
 print("PSM native batches: 12 original engine reads, three successful typed crossings; ordered values, publication, board replacement, every failure index and older ABI PASS")
+
+-- Reentrant lifecycle and definition changes INSIDE a getter, not merely
+-- between Update calls. The restored author form must use the new board
+-- and new key for the next read; Detach must fail at the next original
+-- read, without replay, stale reads or publication.
+local function boardReentry(path,mode)
+    local cache,trace
+    local calls=0
+    trace={}
+    Game={
+        GCETReadBlackboard4IntV1=function() error("unsafe batch executed") end,
+        GCETReadBlackboard3IntBoolV1=function() error("unsafe batch executed") end
+    }
+    publish=function(...) trace[#trace+1]="publish:"..tostring(select(1,...))..":"..tostring(select(2,...)) end
+    cache=assert(dofile(path))
+    local replacement={
+        GetInt=function(self,k) calls=calls+1;trace[#trace+1]="B:"..k;return 200+k end,
+        GetBool=function(self,k) calls=calls+1;trace[#trace+1]="Bbool:"..k;return true end
+    }
+    local initial={
+        GetInt=function(self,k)
+            calls=calls+1;trace[#trace+1]="A:"..k
+            if calls==1 then
+                if mode=="detach" then cache.Attach(nil)
+                else cache.Attach(replacement) end
+            end
+            return 100+k
+        end,
+        GetBool=function(self,k) error("wrong receiver") end
+    }
+    cache.Attach(initial)
+    local ok=originalPcall(cache.Update,initial)
+    assert(ok==(mode~="detach"))
+    assert(calls==(mode=="detach" and 1 or 12))
+    trace[#trace+1]="result:"..tostring(ok)
+    return table.concat(trace,"|")
+end
+for _,mode in ipairs({"replace","detach"}) do
+    assert(boardReentry(root.."/psm-original.lua",mode)==boardReentry(root.."/psm-restored.lua",mode),
+        "PSM reentrant receiver semantics changed: "..mode)
+end
+print("PSM reentrant Attach/Detach: exact next receiver, original failure and publication, zero native batches/replay PASS")

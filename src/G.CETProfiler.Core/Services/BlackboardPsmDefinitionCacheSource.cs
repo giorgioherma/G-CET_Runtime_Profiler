@@ -253,25 +253,22 @@ internal static class BlackboardPsmDefinitionCacheSource
             return false;
         }
         var baseline=Encoding.UTF8.GetBytes(plain);
+        var retiredBatch=!current.AsSpan().SequenceEqual(baseline);
         var keysChanged=TryTransform(baseline,out var transformed,out var reason);
         if(!keysChanged&&reason!="ALREADY_SATISFIED")
         {
             skipped.Add(new {type="SEMANTIC_RULE",Owner="0-Engine",
                 RuleId="0engine-psm-definitions-cache-stage-a",reason});
-            return false;
+            if(!retiredBatch)return false;
+            transformed=baseline;
         }
-        var batches=0;
-        if(typedNativeAvailable&&ZeroEngineDemandSource.TryComposePsmBatches(
-            Encoding.UTF8.GetString(transformed),out var combined,out batches))
-        {
-            if(LuaLocalBudgetAnalyzer.Analyze(combined).MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
-                transformed=Encoding.UTF8.GetBytes(combined);
-            else
-            {
-                batches=0;
-                skipped.Add(new{type="NATIVE_PSM_ORDERED_READS",file=Relative,reason="LUA_LOCAL_LIMIT"});
-            }
-        }
+        // playerBB is an upvalue that Attach/Detach/Reset may replace from
+        // a synchronous getter callback. Init can replace the definition
+        // table as well. A native call receiving the board and four keys by
+        // value cannot observe either change between reads. Checking after
+        // the batch is too late; replay or abort changes author behavior.
+        // Restore known experimental groups and keep all exact per-read
+        // receiver/key evaluations. The independent definition cache stays.
         if(current.AsSpan().SequenceEqual(transformed))return false;
         staged[Relative] = transformed;
         appliedTransformsByFile[Relative] =
@@ -288,14 +285,14 @@ internal static class BlackboardPsmDefinitionCacheSource
             sourceProof = true,
             expectedMarker = Marker,
             nativeMethodCaching = false,
+            orderedNativeBatch = typedNativeAvailable?"RETAINED_EXACT_REENTRANT_RECEIVER":"UNAVAILABLE",
             callbackOrCadenceChanged = false,
             gameplayVerification = "PENDING"
         });
-        if(batches>0)transformManifest.Add(new{
-            type="NATIVE_PSM_ORDERED_READS",file=Relative,sourceProof=true,batches,
-            originalReads=batches*4,typedCrossings=batches,mutableValueCache=false,
-            originalReadOrderPreserved=true,callbackOrCadenceChanged=false,
-            runtimePerformance="NOT_MEASURED"
+        if(retiredBatch)transformManifest.Add(new{
+            type="NATIVE_PSM_ORDERED_READS_RETIRED",file=Relative,sourceProof=true,
+            reason="Mutable board/definition upvalues may change synchronously between getters",
+            originalReadOrderPreserved=true,callbackOrCadenceChanged=false
         });
         return true;
     }

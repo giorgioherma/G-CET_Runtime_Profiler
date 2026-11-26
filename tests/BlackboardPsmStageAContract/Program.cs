@@ -129,7 +129,7 @@ if(args.Length==2&&args[0]=="--stock")
         "actual PSM mutable state reads changed");
     Console.WriteLine("Actual original PSM definition-cache partial completion PASS");
     var producer=assembly.GetType("GCETRuntimeProfiler.Core.Services.ZeroEngineDemandSource",true)!;
-    var compose=producer.GetMethod("TryComposePsmBatches",BindingFlags.Static|BindingFlags.NonPublic)!;
+    var compose=producer.GetMethod("TryComposeLegacyPsmBatchFixture",BindingFlags.Static|BindingFlags.NonPublic)!;
     var normalize=producer.GetMethod("TryNormalizePsmBatches",BindingFlags.Static|BindingFlags.NonPublic)!;
     object?[] ordered=[generated,null,0];
     Check((bool)compose.Invoke(null,ordered)!&&(int)ordered[2]==3,
@@ -143,7 +143,33 @@ if(args.Length==2&&args[0]=="--stock")
     object?[] orderedAgain=[(string)normalized[1]!,null,0];
     Check((bool)compose.Invoke(null,orderedAgain)!&&(string)orderedAgain[1]==nativeBoard,
         "actual stock ordered PSM repeat is byte-identical");
-    Console.WriteLine("Actual PSM source: 12 mutable engine reads retained, 3 ordered typed crossings, existing definition ownership and repeat PASS");
+    // Run the real owner stage against stock/legacy/current source, even
+    // when the packaged DLL advertises the old experimental native API.
+    var stage=cls.GetMethod("TryStage",BindingFlags.Static|BindingFlags.NonPublic)!;
+    var temporary=Path.Combine(Path.GetTempPath(),"gcet-psm-reentry-"+Guid.NewGuid().ToString("N"));
+    var psmRelative="0-Engine/modules/BlackboardCache2.lua";
+    var psmPath=Path.Combine(temporary,"0-Engine","modules","BlackboardCache2.lua");
+    Directory.CreateDirectory(Path.GetDirectoryName(psmPath)!);
+    try
+    {
+        var changes=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+        var counts=new Dictionary<string,int>();var manifest=new List<object>();var skips=new List<object>();
+        bool Stage()=> (bool)stage.Invoke(null,[temporary,temporary,changes,counts,manifest,skips,true])!;
+        File.WriteAllText(psmPath,stock);
+        Check(Stage(),"actual stock PSM generator must still cache definitions");
+        var safe=Encoding.UTF8.GetString(changes[psmRelative]);
+        Check(safe==generated&&!safe.Contains("__gcetReadPsmBatch"),"mutable receiver must retain exact reads even on compatible ABI");
+        Check(!Stage(),"actual exact PSM generation repeat");
+        changes.Clear();counts.Clear();manifest.Clear();skips.Clear();
+        File.WriteAllText(psmPath,nativeBoard);
+        Check(Stage()&&Encoding.UTF8.GetString(changes[psmRelative])==safe,
+            "actual legacy PSM batch must restore per-read receiver and keys");
+        Check(manifest.Any(x=>System.Text.Json.JsonSerializer.Serialize(x).Contains("NATIVE_PSM_ORDERED_READS_RETIRED")),
+            "legacy batch retirement must be reported");
+        Check(!Stage(),"actual migrated PSM repeat");
+    }
+    finally { Directory.Delete(temporary,true); }
+    Console.WriteLine("Actual PSM source: exact mutable receiver/key reads restored; immutable definitions retained, stock/legacy/repeat PASS");
 
 }
 var folder = Path.Combine(Path.GetTempPath(), "gcet-psm-defs-" + Guid.NewGuid().ToString("N"));
