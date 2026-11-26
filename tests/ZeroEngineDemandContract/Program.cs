@@ -524,10 +524,10 @@ return Engine
     // Generate historical overlays using the original source templates,
     // solely to test migration and mixed-version execution.
     Check(ZeroEngineDemandSource.TryDerivedProducer(derived,out var historicalModule),"historical module fixture");
-    Check(ZeroEngineDemandSource.TryDerivedHost(derivedHost,out var historicalHost),"historical host fixture");
+    Check(ZeroEngineDemandSource.TryDerivedHost(derivedHost,out var historicalScalarHost),"historical host fixture");
     Check(ZeroEngineDemandSource.TryDerivedLifecycle(lifecycle,out var historicalLifecycle),"historical lifecycle fixture");
     Check(ZeroEngineDemandSource.TrySampleController(Encoding.UTF8.GetString(generatedScheduler),out var historicalScheduler),"historical scheduler fixture");
-    var scalarHost=Encoding.UTF8.GetBytes(historicalHost);
+    var scalarHost=Encoding.UTF8.GetBytes(historicalScalarHost);
     var scalarScheduler=Encoding.UTF8.GetBytes(historicalScheduler);
     var scalarModule=Encoding.UTF8.GetBytes(historicalModule);
     var scalarLifecycle=Encoding.UTF8.GetBytes(historicalLifecycle);
