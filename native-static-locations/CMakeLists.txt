@@ -13,6 +13,10 @@ endif()
 add_executable(gcet_static_core_test tests/StaticIndexTests.cpp)
 target_link_libraries(gcet_static_core_test PRIVATE gcet_static_core)
 add_test(NAME native_static_index COMMAND gcet_static_core_test)
+# Standalone native diagnostic contract has no RED4ext dependency.
+add_executable(gcet_native_diagnostics_test tests/NativeDiagnosticsTests.cpp)
+target_include_directories(gcet_native_diagnostics_test PRIVATE include)
+add_test(NAME native_diagnostics COMMAND gcet_native_diagnostics_test)
 # Standalone native snapshot has no RED4ext dependency.
 add_executable(gcet_player_snapshot_test tests/PlayerSnapshotTests.cpp)
 target_include_directories(gcet_player_snapshot_test PRIVATE include)

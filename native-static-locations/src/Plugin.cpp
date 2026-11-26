@@ -5,6 +5,7 @@
 #include "DiagnosticProbe.hpp"
 #include "CETLiveObserver.hpp"
 #include "ProducerReads.hpp"
+#include "NativeDiagnostics.hpp"
 #include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
 #include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
@@ -19,6 +20,10 @@
 #include <vector>
 
 namespace {
+    using gcet::diagnostics::Lane;
+    using gcet::diagnostics::Code;
+    using gcet::diagnostics::Record;
+    using gcet::diagnostics::Outcome;
     gcet::static_locations::StaticIndex g_index;
     bool g_loaded = false;
     gcet::static_locations::ManifestLoadStatus g_manifestStatus =
@@ -44,6 +49,27 @@ namespace {
             --g_logBudget;
             g_logger->Info(g_handle,message);
         }
+    }
+    // Diagnostic logger deliberately bypasses the old 32-message startup
+    // budget. First-occurrence and summary bounds are owned by Counters.
+    void DiagnosticLog(const char* message){
+        if(g_logger&&g_logger->Info)g_logger->Info(g_handle,message);
+    }
+    void DiagnosticSummary(const char* boundary){
+        gcet::diagnostics::counters.Summary(boundary);
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "G-NativeRuntime DIAG cumulative acquisitions boundary=%s vector_reads=%llu vector_hits=%llu spatial_reads=%llu spatial_shared_hits=%llu snapshot_samples=%llu anchors=%llu active=%llu subscribers=%llu",
+            boundary,
+            static_cast<unsigned long long>(g_onDemandPosition.Reads()),
+            static_cast<unsigned long long>(g_onDemandPosition.Hits()),
+            static_cast<unsigned long long>(g_spatialPhysicalReads),
+            static_cast<unsigned long long>(g_onDemandPosition.SharedSpatialHits()),
+            static_cast<unsigned long long>(g_playerSnapshot.Samples()),
+            static_cast<unsigned long long>(g_index.Count()),
+            static_cast<unsigned long long>(g_index.ActiveCount()),
+            static_cast<unsigned long long>(g_playerSnapshot.SubscriberCount()));
+        DiagnosticLog(line);
     }
     void LogErrorCodeOnce(int32_t code) {
         if(code<=0 || code>5)return;
@@ -121,8 +147,10 @@ namespace {
         return true;
     }
     bool RunningUpdate(RED4ext::CGameApplication*){
+        Record(Lane::Running,Code::Attempt);
         const bool locationDemand=g_loaded && (g_autoProbe || g_index.ActiveCount()>0);
         const bool playerDemand=g_playerSnapshot.HasDemand();
+        Record(Lane::Running,locationDemand?(playerDemand?Code::BothDemand:Code::LocationDemand):(playerDemand?Code::SnapshotDemand:Code::NoDemand));
         if(!locationDemand && !playerDemand) {
             // Native dormancy: zero player getter calls without any live owner.
             if(g_loaded && g_coordinator.Status()==2)
@@ -161,6 +189,7 @@ namespace {
         if(!reused)gotFrame=code==0 && ReadFrameNumber(currentFrame);
         if(g_onDemandPosition.Generation()!=generation)return false;
         g_lastPlayerCode=code;
+        Outcome(Lane::Running,code==0);
         if(gotFrame&&!reused)
             g_onDemandPosition.Seed(currentFrame,true,{x,y,z,w});
         else if(!gotFrame)
@@ -200,6 +229,7 @@ namespace {
         return false;
     }
     bool RunningExit(RED4ext::CGameApplication*){
+        DiagnosticSummary("RunningExit");
         gcet::producer::ResetProducerReads();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
         g_playerSnapshot.Exit();
@@ -233,10 +263,12 @@ namespace {
         int32_t consumer=0,fields=0;
         RED4ext::GetParameter(f,&consumer);RED4ext::GetParameter(f,&fields);f->code++;
         *out=g_playerSnapshot.Subscribe(consumer,fields);
+        Record(Lane::PlayerSubscribe,Code::Attempt);Outcome(Lane::PlayerSubscribe,*out);
     }
     void PlayerUnsubscribe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t){
         int32_t consumer=0;RED4ext::GetParameter(f,&consumer);f->code++;
         *out=g_playerSnapshot.Unsubscribe(consumer);
+        Record(Lane::PlayerUnsubscribe,Code::Attempt);Outcome(Lane::PlayerUnsubscribe,*out);
     }
     void PlayerPoll(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
         int32_t consumer=0;RED4ext::GetParameter(f,&consumer);f->code++;
@@ -272,20 +304,26 @@ namespace {
         auto* rtti=RED4ext::CRTTISystem::Get();
         auto* cls=rtti ? rtti->GetClass("ScriptGameInstance") : nullptr;
         auto* method=cls ? cls->GetFunction("GetFrameNumber") : nullptr;
-        if(!method)return false;
+        Record(Lane::FrameNumber,Code::Attempt);
+        if(!method){Record(Lane::FrameNumber,!rtti?Code::NoRtti:!cls?Code::NoFrameClass:Code::NoFrameMethod);Record(Lane::FrameNumber,Code::Failed);return false;}
         RED4ext::ScriptGameInstance game;
         number=0;
-        return RED4ext::ExecuteFunction(&game,method,&number);
+        const bool ok=RED4ext::ExecuteFunction(&game,method,&number);
+        if(!ok)Record(Lane::FrameNumber,Code::InvokeFailed);
+        Outcome(Lane::FrameNumber,ok);return ok;
     }
     bool ReadPositionNative(gcet::static_locations::Position4& pos){
         float x=0,y=0,z=0,w=0;
+        Record(Lane::PlayerSample,Code::Attempt);
         const int32_t code=SamplePlayer(x,y,z,w);
-        if(code!=0)return false;
+        Outcome(Lane::PlayerSample,code==0);
+        if(code!=0){Record(Lane::PlayerSample,code==1?Code::NoPlayer:code==2?Code::NoClass:code==3?Code::PositionMethod:code==4?Code::PositionRead:Code::InvalidSample);return false;}
         pos={x,y,z,w};
         return true;
     }
     void PlayerVector4(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
                        RED4ext::Vector4* out,int64_t) {
+        Record(Lane::VectorFrame,Code::Attempt);
         f->code++;
         *out=RED4ext::Vector4{};
         g_positionLastReadValid=false;
@@ -295,11 +333,13 @@ namespace {
         gcet::static_locations::Position4 pos{};
         if(g_onDemandPosition.Generation()!=generation||
            !g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos)){
+            Record(Lane::VectorFrame,Code::Failed);
             g_positionLastReadValid=false;
             return;
         }
         out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
         g_positionLastReadValid=true;
+        Record(Lane::VectorFrame,Code::Complete);
     }
     bool ReadLiveSpatialDonor(gcet::static_locations::Position4& pos){
         // Reuse the SAME handle already required for the exact acquisition.
@@ -317,19 +357,23 @@ namespace {
     }
     void PlayerVector4Live(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
                            RED4ext::Vector4* out,int64_t) {
+        Record(Lane::VectorLive,Code::Attempt);
         f->code++;*out=RED4ext::Vector4{};
         g_positionLastReadValid=false;
         gcet::static_locations::Position4 pos{};
         if(!ReadLiveSpatialDonor(pos)){
+            Record(Lane::VectorLive,Code::Failed);
             g_positionLastReadValid=false;
             return;
         }
         out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
         g_positionLastReadValid=true;
+        Record(Lane::VectorLive,Code::Complete);
     }
     void PlayerVector4Valid(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
                             bool* out,int64_t){
         f->code++;*out=g_positionLastReadValid;
+        Record(Lane::VectorValid,Code::Attempt);Outcome(Lane::VectorValid,*out);
     }
     void PlayerPositionCacheHits(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
                                  int64_t* out,int64_t){
@@ -342,6 +386,7 @@ namespace {
     void CoordinatorStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
         frame->code++;
         *out=g_loaded?g_coordinator.Status():0;
+        Record(Lane::StaticCoordinator,Code::Attempt);Record(Lane::StaticCoordinator,*out==2?Code::Complete:Code::Unknown);
     }
 
     void LastPlayerCode(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
@@ -372,6 +417,7 @@ namespace {
     void Ready(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, bool* out, int64_t) {
         frame->code++;
         *out = g_loaded;
+        Record(Lane::StaticReady,Code::Attempt);Outcome(Lane::StaticReady,*out);
     }
     void Count(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, int32_t* out, int64_t) {
         frame->code++;
@@ -383,11 +429,13 @@ namespace {
         RED4ext::GetParameter(frame, &armed);
         frame->code++;
         *out = g_loaded && g_index.SetArmed(id, armed);
+        Record(Lane::StaticArm,Code::Attempt);Outcome(Lane::StaticArm,*out);
     }
     void ArmCoarseSpatial(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, bool* out, int64_t) {
         int32_t id=0;bool armed=false;
         RED4ext::GetParameter(frame,&id);RED4ext::GetParameter(frame,&armed);frame->code++;
         *out=g_loaded&&g_index.SetArmed(id,armed,true);
+        Record(Lane::StaticArmCoarse,Code::Attempt);Outcome(Lane::StaticArmCoarse,*out);
     }
     void Update(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, int32_t* out, int64_t) {
         float x=0,y=0,z=0;
@@ -429,27 +477,33 @@ namespace {
         int32_t consumer=0,owner=0;
         RED4ext::GetParameter(f,&consumer); RED4ext::GetParameter(f,&owner); f->code++;
         *out=g_loaded && owner>=0 && g_index.Subscribe(consumer,static_cast<uint32_t>(owner));
+        Record(Lane::StaticSubscribe,Code::Attempt);Outcome(Lane::StaticSubscribe,*out);
     }
     void Unsubscribe(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
         int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
         *out=g_loaded && g_index.Unsubscribe(consumer);
+        Record(Lane::StaticUnsubscribe,Code::Attempt);Outcome(Lane::StaticUnsubscribe,*out);
     }
     void SnapshotNeeded(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
         int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
         *out=!g_loaded || g_index.NeedsSnapshot(consumer);
+        Record(Lane::StaticSnapshot,Code::Attempt);Record(Lane::StaticSnapshot,*out?Code::Resync:Code::Complete);
     }
     void AckSnapshot(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
         int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
         *out=g_loaded && g_index.AckSnapshot(consumer);
+        Record(Lane::StaticAck,Code::Attempt);Outcome(Lane::StaticAck,*out);
     }
     void Poll(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
         int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        Record(Lane::StaticPoll,Code::Attempt);
         *out=-1;
-        if (!g_loaded) return;
+        if (!g_loaded){Record(Lane::StaticPoll,Code::NotReady);return;}
         gcet::static_locations::TransitionJournal::Event event;
         const auto result=g_index.Poll(consumer,event);
         *out = result==gcet::static_locations::TransitionJournal::Result::EventReady ? event.id :
                (result==gcet::static_locations::TransitionJournal::Result::Empty ? 0 : -1);
+        Record(Lane::StaticPoll,*out>0?Code::Event:*out==0?Code::Empty:Code::Resync);
     }
     void PolledState(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
         int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
@@ -471,6 +525,7 @@ namespace {
         f->code++;
         *out=g_loaded && owner>0 &&
             g_index.AddAnchor({id,x,y,z,radius,xyOnly,static_cast<uint32_t>(owner)});
+        Record(Lane::StaticAddAnchor,Code::Attempt);Outcome(Lane::StaticAddAnchor,*out);
     }
     void OwnerCount(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
         int32_t owner=0; RED4ext::GetParameter(f,&owner); f->code++;
@@ -488,10 +543,12 @@ namespace {
     void RemoveAnchor(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
         int32_t id=0; RED4ext::GetParameter(f,&id); f->code++;
         *out=g_loaded && g_index.RemoveAnchor(id);
+        Record(Lane::StaticRemoveAnchor,Code::Attempt);Outcome(Lane::StaticRemoveAnchor,*out);
     }
     void RemoveOwner(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
         int32_t owner=0; RED4ext::GetParameter(f,&owner); f->code++;
         *out=g_loaded && owner>0 && g_index.RemoveOwner(static_cast<uint32_t>(owner));
+        Record(Lane::StaticRemoveOwner,Code::Attempt);Outcome(Lane::StaticRemoveOwner,*out);
     }
     void Metric(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int64_t* out, int64_t) {
         int32_t metric=0; RED4ext::GetParameter(f,&metric); f->code++;
@@ -622,6 +679,7 @@ namespace {
         RegisterFunction("GCETPlayerVector4Valid",PlayerVector4Valid,"Bool",nullptr,nullptr,0);
         RegisterFunction("GCETPlayerPositionCacheHits",PlayerPositionCacheHits,"Int64",nullptr,nullptr,0);
         RegisterFunction("GCETPlayerPositionEngineReads",PlayerPositionEngineReads,"Int64",nullptr,nullptr,0);
+        DiagnosticLog("G-NativeRuntime DIAG legacy/static/player RTTI registration sequence finished; typed producer registration outcomes above");
 
     }
     bool LoadData() {
@@ -685,7 +743,9 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
     if (reason == RED4ext::v1::EMainReason::Load) {
         g_handle=handle;
         g_logger=sdk?sdk->logger:nullptr;
-        if(!LoadData()) { g_logger=nullptr; return false; }
+        gcet::diagnostics::counters.SetSink(DiagnosticLog);
+        DiagnosticLog("G-NativeRuntime DIAG v1 enabled; cumulative counters; no safety bypass");
+        if(!LoadData()) { gcet::diagnostics::counters.SetSink(nullptr);g_logger=nullptr; return false; }
         if(g_loaded) {
             if(g_manifestStatus == gcet::static_locations::ManifestLoadStatus::Missing)
                 Log("G-NativeRuntime: no manifest; dynamic location registration ready");
@@ -708,6 +768,8 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
+        DiagnosticSummary("Unload");
+        gcet::diagnostics::counters.SetSink(nullptr);
         gcet::producer::ResetProducerReads();
         gcet::cet_dispatch::RetireObserver();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;

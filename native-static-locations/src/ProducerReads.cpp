@@ -1,4 +1,5 @@
 #include "ProducerReads.hpp"
+#include "NativeDiagnostics.hpp"
 #include "OrderedProducerRead.hpp"
 #include "MethodSlot.hpp"
 #include "TypedProducerResult.hpp"
@@ -27,6 +28,11 @@ using namespace RED4ext;
 using IntKey=game::bb::ScriptID_Int32;
 using BoolKey=game::bb::ScriptID_Bool;
 using Result=ReadResult;
+using gcet::diagnostics::Lane;
+using gcet::diagnostics::Code;
+using gcet::diagnostics::Record;
+void Reject(Lane lane,Code reason){Record(lane,reason);Record(lane,Code::Unsupported);}
+void OrderedOutcome(Lane lane,Result result){Record(lane,result==Result::Complete?Code::Complete:result==Result::Unsupported?Code::Unsupported:Code::Failed);}
 using Receiver=Handle<IScriptable>;
 
 struct MethodAdapter {
@@ -190,12 +196,15 @@ bool HasBase(CClass* cls,CClass* expected){
         if(cls==expected)return true;
     return false;
 }
-bool CETCallShape(IScriptable* context,CBaseFunction* caller,const Bindings& b){
-    // Source-proven necessary conditions, not proof of actual loaded CET
-    // identity. Direct REDscript and unknown callers take Unsupported.
-    return context&&caller&&caller->fullName==CName("$Lua")&&
-           caller->shortName==CName("$Lua")&&caller->params.Size()==0&&
-           context->GetType()==b.entityClass;
+bool CETCallShape(IScriptable* context,CBaseFunction* caller,const Bindings& b,Lane lane){
+    // Same predicate and short-circuit order; expose the first failing term.
+    if(!context){Record(lane,Code::NoContext);return false;}
+    if(!caller){Record(lane,Code::NoCaller);return false;}
+    if(caller->fullName!=CName("$Lua")){Record(lane,Code::CallerFullName);return false;}
+    if(caller->shortName!=CName("$Lua")){Record(lane,Code::CallerShortName);return false;}
+    if(caller->params.Size()!=0){Record(lane,Code::CallerParams);return false;}
+    if(context->GetType()!=b.entityClass){Record(lane,Code::CallerContextType);return false;}
+    return true;
 }
 template<class T>
 void ReadOutput(CStackFrame* frame,T*& value,rtti::IType*& type){
@@ -212,6 +221,8 @@ bool ValidOutput(T* value,rtti::IType* actual,rtti::IType* expected){
 struct alignas(16) Pose {Vector4 position{};Quaternion orientation{};EulerAngles euler{};};
 template<bool ShareSpatial,bool FullEuler=false>
 void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
+    constexpr Lane lane=FullEuler?Lane::PositionEuler:ShareSpatial?Lane::SharedPose:Lane::Pose;
+    Record(lane,Code::Attempt);
     Receiver receiver;
     Vector4* pos=nullptr;Quaternion* orientation=nullptr;float* yaw=nullptr;EulerAngles* angles=nullptr;
     rtti::IType *posType=nullptr,*orientationType=nullptr,*yawType=nullptr,*anglesType=nullptr;
@@ -220,26 +231,33 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     if constexpr(FullEuler)ReadOutput(frame,angles,anglesType);
     else {ReadOutput(frame,orientation,orientationType);ReadOutput(frame,yaw,yawType);}
     frame->code++;
-    if(!out)return;
+    if(!out){Record(lane,Code::NoResult);return;}
     *out=static_cast<int32_t>(Result::Unsupported);
-    if(!receiver.instance||!pos||!context||!frame->func)return;
-    if constexpr(FullEuler){if(!angles)return;}
-    else if(!orientation||!yaw)return;
+    if(!receiver.instance){Reject(lane,Code::NoReceiver);return;}
+    if(!pos){Reject(lane,Code::PositionOutput);return;}
+    if(!context){Reject(lane,Code::NoContext);return;}
+    if(!frame->func){Reject(lane,Code::NoCaller);return;}
+    if constexpr(FullEuler){if(!angles){Reject(lane,Code::EulerOutput);return;}}
+    else if(!orientation||!yaw){Reject(lane,!orientation?Code::OrientationOutput:Code::YawOutput);return;}
     auto* b=CurrentBindings();
     auto* cls=receiver.instance->GetType();
-    if(!b||!cls||!HasBase(cls,b->entityClass)||!CETCallShape(context,frame->func,*b)||
-       !FitsTypedStorage<sizeof(Vector4)>(b->vec)||!FitsTypedStorage<sizeof(Quaternion)>(b->quat)||
-       !FitsTypedStorage<sizeof(EulerAngles)>(b->angles)||
-       !ValidOutput(pos,posType,b->vec))return;
+    if(!b){Reject(lane,Code::NoBindings);return;}
+    if(!cls){Reject(lane,Code::NoClass);return;}
+    if(!HasBase(cls,b->entityClass)){Reject(lane,Code::WrongReceiverClass);return;}
+    if(!CETCallShape(context,frame->func,*b,lane)){Record(lane,Code::Unsupported);return;}
+    if(!FitsTypedStorage<sizeof(Vector4)>(b->vec)){Reject(lane,Code::PositionStorage);return;}
+    if(!FitsTypedStorage<sizeof(Quaternion)>(b->quat)){Reject(lane,Code::OrientationStorage);return;}
+    if(!FitsTypedStorage<sizeof(EulerAngles)>(b->angles)){Reject(lane,Code::EulerStorage);return;}
+    if(!ValidOutput(pos,posType,b->vec)){Reject(lane,Code::PositionOutput);return;}
     if constexpr(FullEuler){
-        if(!ValidOutput(angles,anglesType,b->angles)||
-           !DisjointOut(pos,sizeof(*pos),angles,sizeof(*angles)))return;
+        if(!ValidOutput(angles,anglesType,b->angles)){Reject(lane,Code::EulerOutput);return;}
+        if(!DisjointOut(pos,sizeof(*pos),angles,sizeof(*angles))){Reject(lane,Code::OutputOverlap);return;}
     }else{
-        if(!ValidOutput(orientation,orientationType,b->quat)||
-           !ValidOutput(yaw,yawType,b->floats)||
-           !DisjointOut(pos,sizeof(*pos),orientation,sizeof(*orientation))||
+        if(!ValidOutput(orientation,orientationType,b->quat)){Reject(lane,Code::OrientationOutput);return;}
+        if(!ValidOutput(yaw,yawType,b->floats)){Reject(lane,Code::YawOutput);return;}
+        if(!DisjointOut(pos,sizeof(*pos),orientation,sizeof(*orientation))||
            !DisjointOut(pos,sizeof(*pos),yaw,sizeof(*yaw))||
-           !DisjointOut(orientation,sizeof(*orientation),yaw,sizeof(*yaw)))return;
+           !DisjointOut(orientation,sizeof(*orientation),yaw,sizeof(*yaw))){Reject(lane,Code::OutputOverlap);return;}
     }
     auto* posFn=Resolve(b->position,cls,"GetWorldPosition",false,b->vec);
     auto* oriFn=Resolve(b->orientation,cls,"GetWorldOrientation",false,b->quat);
@@ -259,17 +277,27 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
         if(posFn&&oriFn&&yawFn)shared=BeginSharedSpatialPose(receiver.instance);
     }
     Pose sample;
-    auto result=ReadOrdered(sample,[&]{return posFn&&oriFn&&yawFn;},current,
-        [&](Pose& p){return Read(posFn,receiver.instance,frame->func,b->vec,p.position);},
+    auto checkedCurrent=[&]{const bool ok=current();if(!ok)Record(lane,Code::EpochChanged);return ok;};
+    auto result=ReadOrdered(sample,[&]{
+        if(!posFn){Record(lane,Code::PositionMethod);return false;}
+        if(!oriFn){Record(lane,Code::OrientationMethod);return false;}
+        if(!yawFn){Record(lane,Code::EulerMethod);return false;}
+        return true;
+    },checkedCurrent,
+        [&](Pose& p){const bool ok=Read(posFn,receiver.instance,frame->func,b->vec,p.position);
+            if(!ok)Record(lane,Code::PositionRead);return ok;},
         [&](Pose& p){
             auto* live=Resolve(b->orientation,cls,"GetWorldOrientation",false,b->quat);
-            return Read(live,receiver.instance,frame->func,b->quat,p.orientation);
+            const bool ok=Read(live,receiver.instance,frame->func,b->quat,p.orientation);
+            if(!ok)Record(lane,live?Code::OrientationRead:Code::OrientationMethod);return ok;
         },
         [&](Pose& p){
             auto* live=Resolve(b->euler,b->quaternionClass,"ToEulerAngles",true,b->angles,b->quat);
-            return Read(live,context,frame->func,b->angles,p.euler,b->quat,p.orientation);
+            const bool ok=Read(live,context,frame->func,b->angles,p.euler,b->quat,p.orientation);
+            if(!ok)Record(lane,live?Code::EulerRead:Code::EulerMethod);return ok;
         });
     *out=static_cast<int32_t>(result);
+    OrderedOutcome(lane,result);
     if(result==Result::Complete){
         *pos=sample.position;
         if constexpr(FullEuler)*angles=sample.euler;
@@ -285,6 +313,8 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
 // mod names, persistent blackboard handles or a second key cache.
 template<bool LastBool>
 void ReadBoard(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
+    constexpr Lane lane=LastBool?Lane::Board3IntBool:Lane::Board4Int;
+    Record(lane,Code::Attempt);
     Receiver receiver;
     alignas(16) std::array<IntKey,4> keys{};
     alignas(16) BoolKey boolKey{};
@@ -298,24 +328,31 @@ void ReadBoard(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     for(size_t i=0;i<(LastBool?3u:4u);++i)ReadOutput(frame,values[i],valueTypes[i]);
     if constexpr(LastBool)ReadOutput(frame,boolValue,boolValueType);
     frame->code++;
-    if(!out)return;
+    if(!out){Record(lane,Code::NoResult);return;}
     *out=static_cast<int32_t>(Result::Unsupported);
-    if(!receiver.instance||!frame->func)return;
-    for(size_t i=0;i<(LastBool?3u:4u);++i)if(!values[i])return;
-    if constexpr(LastBool)if(!boolValue)return;
+    if(!receiver.instance){Reject(lane,Code::NoReceiver);return;}
+    if(!frame->func){Reject(lane,Code::NoCaller);return;}
+    for(size_t i=0;i<(LastBool?3u:4u);++i)if(!values[i]){Reject(lane,Code::IntOutput);return;}
+    if constexpr(LastBool)if(!boolValue){Reject(lane,Code::BoolOutput);return;}
     auto* b=CurrentBindings();
     auto* cls=receiver.instance->GetType();
-    if(!b||!cls||!HasBase(cls,b->boardClass)||!CETCallShape(context,frame->func,*b)||
-       !FitsTypedStorage<sizeof(int32_t)>(b->ints)||!FitsTypedStorage<sizeof(IntKey)>(b->intKey))return;
-    if constexpr(LastBool)
-        if(!FitsTypedStorage<sizeof(bool)>(b->bools)||!FitsTypedStorage<sizeof(BoolKey)>(b->boolKey)||
-           !ValidOutput(boolValue,boolValueType,b->bools))return;
+    if(!b){Reject(lane,Code::NoBindings);return;}
+    if(!cls){Reject(lane,Code::NoClass);return;}
+    if(!HasBase(cls,b->boardClass)){Reject(lane,Code::WrongReceiverClass);return;}
+    if(!CETCallShape(context,frame->func,*b,lane)){Record(lane,Code::Unsupported);return;}
+    if(!FitsTypedStorage<sizeof(int32_t)>(b->ints)){Reject(lane,Code::IntStorage);return;}
+    if(!FitsTypedStorage<sizeof(IntKey)>(b->intKey)){Reject(lane,Code::IntKeyStorage);return;}
+    if constexpr(LastBool){
+        if(!FitsTypedStorage<sizeof(bool)>(b->bools)){Reject(lane,Code::BoolStorage);return;}
+        if(!FitsTypedStorage<sizeof(BoolKey)>(b->boolKey)){Reject(lane,Code::BoolKeyStorage);return;}
+        if(!ValidOutput(boolValue,boolValueType,b->bools)){Reject(lane,Code::BoolOutput);return;}
+    }
     for(size_t i=0;i<(LastBool?3u:4u);++i){
-        if(!ValidOutput(values[i],valueTypes[i],b->ints))return;
+        if(!ValidOutput(values[i],valueTypes[i],b->ints)){Reject(lane,Code::IntOutput);return;}
         for(size_t j=0;j<i;++j)
-            if(!DisjointOut(values[i],sizeof(int32_t),values[j],sizeof(int32_t)))return;
+            if(!DisjointOut(values[i],sizeof(int32_t),values[j],sizeof(int32_t))){Reject(lane,Code::OutputOverlap);return;}
         if constexpr(LastBool)
-            if(!DisjointOut(values[i],sizeof(int32_t),boolValue,sizeof(bool)))return;
+            if(!DisjointOut(values[i],sizeof(int32_t),boolValue,sizeof(bool))){Reject(lane,Code::OutputOverlap);return;}
     }
     auto* intFn=Resolve(b->readInt,cls,"GetInt",false,b->ints,b->intKey);
     auto* boolFn=LastBool?Resolve(b->readBool,cls,"GetBool",false,b->bools,b->boolKey):nullptr;
@@ -328,19 +365,29 @@ void ReadBoard(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     struct Values {std::array<int32_t,4> ints{};bool last=false;} sample;
     auto nextInt=[&](Values& v,size_t i){
         auto* live=Resolve(b->readInt,cls,"GetInt",false,b->ints,b->intKey);
-        return Read(live,receiver.instance,frame->func,b->ints,v.ints[i],b->intKey,keys[i]);
+        const bool ok=Read(live,receiver.instance,frame->func,b->ints,v.ints[i],b->intKey,keys[i]);
+        if(!ok)Record(lane,!live?Code::IntMethod:i==1?Code::IntRead2:i==2?Code::IntRead3:Code::IntRead4);
+        return ok;
     };
-    auto result=ReadOrdered(sample,[&]{return intFn&&(!LastBool||boolFn);},current,
-        [&](Values& v){return Read(intFn,receiver.instance,frame->func,b->ints,v.ints[0],b->intKey,keys[0]);},
+    auto checkedCurrent=[&]{const bool ok=current();if(!ok)Record(lane,Code::EpochChanged);return ok;};
+    auto result=ReadOrdered(sample,[&]{
+        if(!intFn){Record(lane,Code::IntMethod);return false;}
+        if(LastBool&&!boolFn){Record(lane,Code::BoolMethod);return false;}
+        return true;
+    },checkedCurrent,
+        [&](Values& v){const bool ok=Read(intFn,receiver.instance,frame->func,b->ints,v.ints[0],b->intKey,keys[0]);
+            if(!ok)Record(lane,Code::IntRead1);return ok;},
         [&](Values& v){return nextInt(v,1);},
         [&](Values& v){return nextInt(v,2);},
         [&](Values& v){
             if constexpr(LastBool){
                 auto* live=Resolve(b->readBool,cls,"GetBool",false,b->bools,b->boolKey);
-                return Read(live,receiver.instance,frame->func,b->bools,v.last,b->boolKey,boolKey);
+                const bool ok=Read(live,receiver.instance,frame->func,b->bools,v.last,b->boolKey,boolKey);
+                if(!ok)Record(lane,live?Code::BoolRead:Code::BoolMethod);return ok;
             }else return nextInt(v,3);
         });
     *out=static_cast<int32_t>(result);
+    OrderedOutcome(lane,result);
     if(result!=Result::Complete)return;
     for(size_t i=0;i<(LastBool?3u:4u);++i)*values[i]=sample.ints[i];
     if constexpr(LastBool)*boolValue=sample.last;
@@ -348,39 +395,40 @@ void ReadBoard(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
 
 struct Arg {const char* type;const char* name;bool out=false;};
 template<class T>
-void Register(const char* name,T handler,std::initializer_list<Arg> args) {
+void Register(Lane lane,const char* name,T handler,std::initializer_list<Arg> args) {
     auto* rtti=CRTTISystem::Get();
-    if(!rtti||!rtti->GetType("Int32"))return;
-    for(const auto& a:args)if(!rtti->GetType(a.type))return;
+    if(!rtti||!rtti->GetType("Int32")){Record(lane,Code::RegisterTypeMissing);return;}
+    for(const auto& a:args)if(!rtti->GetType(a.type)){Record(lane,Code::RegisterTypeMissing);return;}
     // CET's own 264-byte marshalling buffer fits at most 15 ordinary
     // 17-byte parameters and the ParamEnd opcode.
-    if(args.size()>15)return;
+    if(args.size()>15){Record(lane,Code::RegisterParamFailed);return;}
     auto* fn=CGlobalFunction::Create(name,name,handler);
-    if(!fn)return;
+    if(!fn){Record(lane,Code::RegisterCreateFailed);return;}
     fn->flags={.isNative=true,.isStatic=true};
-    if(!fn->SetReturnType("Int32"))return;
-    for(const auto& a:args)if(!fn->AddParam(a.type,a.name,a.out))return;
+    if(!fn->SetReturnType("Int32")){Record(lane,Code::RegisterReturnFailed);return;}
+    for(const auto& a:args)if(!fn->AddParam(a.type,a.name,a.out)){Record(lane,Code::RegisterParamFailed);return;}
     rtti->RegisterFunction(fn);
+    Record(lane,Code::Registered);
 }
 }
 void ResetProducerReads() noexcept {g_generation.fetch_add(1,std::memory_order_acq_rel);}
 void RegisterProducerReads(){
     ResetProducerReads();
-    Register("GCETReadPlayerPoseV1",ReadPose<false>,{
+    Register(Lane::Pose,"GCETReadPlayerPoseV1",ReadPose<false>,{
         {"handle:entEntity","player"},{"Vector4","position",true},
         {"Quaternion","orientation",true},{"Float","yaw",true}});
-    Register("GCETReadSharedPlayerPoseV1",ReadPose<true>,{
+    Register(Lane::SharedPose,"GCETReadSharedPlayerPoseV1",ReadPose<true>,{
         {"handle:entEntity","player"},{"Vector4","position",true},
         {"Quaternion","orientation",true},{"Float","yaw",true}});
     // Same ordered producer; do not marshal an unused Quaternion into Lua.
-    Register("GCETReadPlayerPositionEulerV1",ReadPose<true,true>,{
+    Register(Lane::PositionEuler,"GCETReadPlayerPositionEulerV1",ReadPose<true,true>,{
         {"handle:entEntity","player"},{"Vector4","position",true},
         {"EulerAngles","angles",true}});
-    Register("GCETReadBlackboard4IntV1",ReadBoard<false>,{
+    Register(Lane::Board4Int,"GCETReadBlackboard4IntV1",ReadBoard<false>,{
         {"handle:gameIBlackboard","board"},
         {IntKey::NAME,"key1"},{IntKey::NAME,"key2"},{IntKey::NAME,"key3"},{IntKey::NAME,"key4"},
         {"Int32","value1",true},{"Int32","value2",true},{"Int32","value3",true},{"Int32","value4",true}});
-    Register("GCETReadBlackboard3IntBoolV1",ReadBoard<true>,{
+    Register(Lane::Board3IntBool,"GCETReadBlackboard3IntBoolV1",ReadBoard<true>,{
         {"handle:gameIBlackboard","board"},
         {IntKey::NAME,"key1"},{IntKey::NAME,"key2"},{IntKey::NAME,"key3"},{BoolKey::NAME,"key4"},
         {"Int32","value1",true},{"Int32","value2",true},{"Int32","value3",true},{"Bool","value4",true}});
