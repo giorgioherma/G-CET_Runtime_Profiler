@@ -533,9 +533,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Development-only fixture, not the production runtime pin. Never publish this copy.
-          $run = 45742502729
+          $run = 45869115647
           $meta = (& gh run view $run --repo ${{ github.repository }} --json headSha,status,conclusion | ConvertFrom-Json)
-          if ($LASTEXITCODE -ne 0 -or $meta.headSha -ne '78e433a40dba2513fe7207a7089187ed7e4b3c8e' -or $meta.status -ne 'completed' -or $meta.conclusion -ne 'success') { throw 'EXPERIMENTAL_NATIVE_PROVENANCE' }
+          if ($LASTEXITCODE -ne 0 -or $meta.headSha -ne 'a3ea6c8abd641f53a401cdbb92eb425ca1c97f5e' -or $meta.status -ne 'completed' -or $meta.conclusion -ne 'success') { throw 'EXPERIMENTAL_NATIVE_PROVENANCE' }
           $temp = Join-Path $env:RUNNER_TEMP 'gcet-experimental-native'
           $runtime = Join-Path $temp 'resolver'
           New-Item -ItemType Directory -Force -Path $runtime | Out-Null
@@ -543,10 +543,11 @@ jobs:
             Copy-Item 'ci-resolver/*' $runtime -Recurse -Force
             gh run download $run --repo ${{ github.repository }} --name gcet-static-native-experimental --dir (Join-Path $temp 'artifact')
             if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_NATIVE_DOWNLOAD' }
-            $dll = Join-Path $temp 'artifact/red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll'
-            $expected = '1419d87e953eaeb6bc166b99fa5ef38856331b7f5ddf5446603bc8c12b28bb06'
+            $dll = Join-Path $temp 'artifact/red4ext/plugins/G-NativeRuntime/G-Engine.dll'
+            $expected = '78325c25e91bd9124c571a98ed516489f840955c8791a9f65b3737b49e20289d'
             if ((Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'EXPERIMENTAL_NATIVE_HASH' }
-            Copy-Item $dll (Join-Path $runtime 'runtime/native/GCETStaticLocations.dll') -Force
+            Remove-Item -LiteralPath (Join-Path $runtime 'runtime/native/GCETStaticLocations.dll')
+            Copy-Item $dll (Join-Path $runtime 'runtime/native/G-Engine.dll') -Force
             $exe = Join-Path $runtime 'G-CET-Resolver.exe'
             $mods = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/bin/x64/plugins/cyber_engine_tweaks/mods'
             $capture = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/capture'
@@ -562,7 +563,12 @@ jobs:
             Expand-Archive -LiteralPath $zip -DestinationPath $overlay
             $board = Get-Content -Raw -LiteralPath (Join-Path $overlay 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/BlackboardCache2.lua')
             if ($board.Contains('__gcetReadPsmBatch') -or ([regex]::Matches($board,'playerBB:GetInt\(')).Count -ne 11 -or ([regex]::Matches($board,'playerBB:GetBool\(')).Count -ne 1 -or !$board.Contains('__gcetPsmFields.Weapon')) { throw 'EXPERIMENTAL_PSM_EXACT_RECEIVER_REQUIRED' }
-            $emitted = Join-Path $overlay 'red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll'
+            $emitted = Join-Path $overlay 'red4ext/plugins/G-NativeRuntime/G-Engine.dll'
+            $data = Join-Path $overlay 'red4ext/plugins/G-NativeRuntime/G-Native.locations'
+            if (!(Test-Path -LiteralPath $data -PathType Leaf) -or
+                (Test-Path -LiteralPath (Join-Path $overlay 'red4ext/plugins/G-CET-StaticLocations'))) { throw 'EXPERIMENTAL_CANONICAL_NATIVE_LAYOUT' }
+            if ($m.nativeRuntime.gameRootPath -ne 'red4ext/plugins/G-NativeRuntime/G-Engine.dll' -or
+                $m.nativeRuntime.locationFilePath -ne 'red4ext/plugins/G-NativeRuntime/G-Native.locations') { throw 'EXPERIMENTAL_NATIVE_MANIFEST_PATHS' }
             if ((Get-FileHash -LiteralPath $emitted -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'EXPERIMENTAL_OUTPUT_DLL_HASH' }
             node tests/ValidateOriginalStackPass.cjs $mods $overlay $manifest
             if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_ORIGINAL_STACK_OUTPUT_CHECK' }
