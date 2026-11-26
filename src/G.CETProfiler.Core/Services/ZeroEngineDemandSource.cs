@@ -560,6 +560,76 @@ end
     }
 
     internal const string SpatialHostPath="0-Engine/modules/GCETNativeLocationHost.lua";
+    private const string EmptyNativeLocationJob="""
+-- G-CET native location registration demand v1
+local function __gcetCancelEmptyLocationJob(self)
+  if next(self.owners)~=nil or not self.job then return end
+  local job=self.job
+  local ok,result=pcall(job.Cancel)
+  if ok and result~=false and self.job==job then self.job=nil end
+end
+""";
+    // Failed registrations can leave the original 10 Hz Scheduler job
+    // active forever with no owner. Release that exact job; retain existing
+    // cleanup, successful registration timing, and mixed-owner behavior.
+    internal static bool TryNativeLocationRegistrationDemand(string source,out string next)
+    {
+        next=source;
+        var candidate=source;
+        var helper=Newlines(source,EmptyNativeLocationJob+"\n\n");
+        var helperCount=Count(candidate,helper);
+        if(helperCount>1)return false;
+        if(helperCount==1)candidate=candidate.Replace(helper,"",StringComparison.Ordinal);
+        const string cancel="__gcetCancelEmptyLocationJob(self)";
+        const string dynamicCleanup="for _,key in ipairs(added) do pcall(native,\"GCETStaticRemoveAnchor\",key) end";
+        const string compiledCleanup="for _,key in ipairs(armed) do pcall(native,\"GCETStaticArm\",key,false) end";
+        const string tickEmpty="if next(self.owners)==nil then return end";
+        const string tickNew="if next(self.owners)==nil then "+cancel+";return end";
+        var code=MaskLuaTrivia(candidate);
+        bool Owns(string functionName,string exact)
+        {
+            var fn=Regex.Matches(code,@"(?ms)^function Host:"+Regex.Escape(functionName)+
+                @"\([^\r\n]*\)[ \t]*\r?\n.*?^end[ \t]*(?=\r?$)");
+            if(fn.Count!=1)return false;
+            var match=fn[0];
+            return Count(candidate.Substring(match.Index,match.Length),exact)==1;
+        }
+        if(!Owns("attach",dynamicCleanup)||!Owns("attachCompiled",compiledCleanup)||
+           !Owns("_schedule","if self.job then return true end")||
+           !Owns("_schedule","self.job=job")||
+           !Owns("shutdown","if self.job then pcall(self.job.Cancel);self.job=nil end")||
+           Count(code,"function Host.new(engine)")!=1||
+           Count(candidate,dynamicCleanup)!=1||Count(candidate,compiledCleanup)!=1||
+           (!Owns("_tick",tickEmpty)&&!Owns("_tick",tickNew))||
+           Regex.Matches(code,@"\bself\.job\s*=(?!=)").Count!=2)return false;
+        // Each accepted failure path owns the existing anchor rollback.
+        // Normalize independently installed fragments, not unrelated code.
+        foreach(var cleanup in new[]{dynamicCleanup,compiledCleanup})
+        {
+            var old=cleanup+"\n    return false";
+            var current=cleanup+"\n    "+cancel+"\n    return false";
+            if(Count(NormalizeLf(candidate),current)==1)
+            {
+                if(!ReplaceUnique(ref candidate,current,old))return false;
+            }
+            if(Count(NormalizeLf(candidate),old)!=1)return false;
+        }
+        if(Count(NormalizeLf(candidate),tickNew)==1)
+            if(!ReplaceUnique(ref candidate,tickNew,tickEmpty))return false;
+        if(Count(candidate,tickEmpty)!=1||
+           candidate.Contains("__gcetCancelEmptyLocationJob",StringComparison.Ordinal)||
+           candidate.Contains("G-CET native location registration demand v1",StringComparison.Ordinal))return false;
+        // Preserve exact successful schedule creation and original cadence.
+        if(!ReplaceUnique(ref candidate,dynamicCleanup+"\n    return false",
+              dynamicCleanup+"\n    "+cancel+"\n    return false")||
+           !ReplaceUnique(ref candidate,compiledCleanup+"\n    return false",
+              compiledCleanup+"\n    "+cancel+"\n    return false")||
+           !ReplaceUnique(ref candidate,tickEmpty,tickNew)||
+           !ReplaceUnique(ref candidate,"function Host.new(engine)",
+              EmptyNativeLocationJob+"\n\nfunction Host.new(engine)"))return false;
+        next=candidate;return true;
+    }
+
     private const string SpatialArmHelper="""
 -- G-CET explicit coarse spatial freshness v1
 local function __gcetArmSharedSpatial(id)
@@ -2719,6 +2789,20 @@ end
                 skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
                     RuleId = "0engine-demand-scheduler-idle-context",
                     reason = "Canonical job lifecycle or host context driver not structurally proven; preserve existing dispatch." });
+        }
+        if(framework.Files.TryGetValue(SpatialHostPath,out var locationBytes))
+        {
+            var locationSource=Encoding.UTF8.GetString(locationBytes);
+            if(TryNativeLocationRegistrationDemand(locationSource,out var locationNext)&&locationNext!=locationSource)
+            {
+                var locationFiles=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
+                locationFiles[SpatialHostPath]=Encoding.UTF8.GetBytes(locationNext);
+                framework=framework with{Files=locationFiles};
+                applied++;
+                manifest.Add(new{type="FRAMEWORK_NATIVE_LOCATION_REGISTRATION_DEMAND",Owner="0-Engine",
+                    file=SpatialHostPath,sourceProof=true,policy="RELEASE_UNOWNED_EXISTING_SCHEDULER_JOB",
+                    callbackOrCadenceChanged=false,addsRecurringProducer=false});
+            }
         }
         if (compatible > 0)
         {

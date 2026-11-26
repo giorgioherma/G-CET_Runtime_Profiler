@@ -363,6 +363,18 @@ return UpdateFrame
     // owner and registration source. It cannot silently enable the new
     // freshness contract on the old production DLL.
     var spatialSource=File.ReadAllText("resolver-runtime/0-Engine/modules/GCETNativeLocationHost.lua");
+    Check(ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(spatialSource,out var locationDemand)&&locationDemand!=spatialSource,
+        "actual native location registration demand admission");
+    Check(ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(locationDemand,out var locationRepeat)&&locationRepeat==locationDemand,
+        "native location registration demand repeat");
+    Check(ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(locationDemand.Replace(
+        "    __gcetCancelEmptyLocationJob(self)\n    return false","    return false"),out var locationPartial)&&locationPartial==locationDemand,
+        "native location partial failure cleanup completion");
+    Check(!ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(spatialSource.Replace(
+        "self.job=job","self.job=foreignJob"),out _),"unknown scheduler handle ownership refused");
+    Check(ZeroEngineDemandSource.TrySharedSpatialHost(locationDemand,true,out var locationShared)&&
+        ZeroEngineDemandSource.TryNativeLocationRegistrationDemand(locationShared,out var locationSharedRepeat)&&
+        locationSharedRepeat==locationShared,"coarse spatial and registration cleanup compose");
     Check(ZeroEngineDemandSource.TrySharedSpatialHost(spatialSource,true,out var spatialShared)&&
           spatialShared.Contains("GCETStaticArmCoarseSpatialV1"),"actual spatial host registration admission");
     Check(ZeroEngineDemandSource.TrySharedSpatialHost(spatialShared,true,out var spatialRepeat)&&
@@ -543,6 +555,7 @@ end
         File.WriteAllText(Path.Combine(root,"pose-typed.lua"),typedPose);
         File.WriteAllText(Path.Combine(root,"pose-shared.lua"),sharedPose);
         File.WriteAllText(Path.Combine(root,"spatial-shared.lua"),spatialShared);
+        File.WriteAllText(Path.Combine(root,"spatial-location-demand.lua"),locationShared);
         File.WriteAllText(Path.Combine(root,"exact-pairs-original.lua"),exactPairsSource);
         File.WriteAllText(Path.Combine(root,"exact-pairs-generated.lua"),exactPairsGenerated);
         File.WriteAllText(Path.Combine(root,"psm-original.lua"),psmReadSource);

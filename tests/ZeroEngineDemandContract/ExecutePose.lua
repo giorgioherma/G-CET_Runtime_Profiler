@@ -283,3 +283,45 @@ for _,mode in ipairs({"replace","detach"}) do
         "PSM reentrant receiver semantics changed: "..mode)
 end
 print("PSM reentrant Attach/Detach: exact next receiver, original failure and publication, zero native batches/replay PASS")
+
+-- Failed first attach must not leave an active 10Hz Scheduler lane.
+-- A failed later owner must not cancel the surviving owners' lane.
+do
+    local active,created,cancelled,armFailures=0,0,0,0
+    local failOwner=1
+    local nativeOwners={}
+    Game={
+        GCETStaticReady=function() return true end,
+        GCETStaticOwnerCount=function(id) return id>=10 and 2 or 0 end,
+        GCETStaticOwnerAnchor=function(id,n)return id*10+n end,
+        GCETStaticAddAnchor=function(id,x,y,z,r,xy,owner) nativeOwners[id]=owner;return true end,
+        GCETStaticRemoveAnchor=function(id)nativeOwners[id]=nil;return true end,
+        GCETStaticArm=function(id,armed)
+            if not armed then return true end
+            local owner=nativeOwners[id] or math.floor(id/10)
+            if owner==failOwner then armFailures=armFailures+1;return false end
+            return true
+        end,
+        GCETStaticUnsubscribe=function()return true end
+    }
+    local host=assert(dofile(root.."/spatial-location-demand.lua")).new({
+        Register=function()return{Schedule={Every=function(period,opts,fn)
+            assert(period==0.10);created=created+1;active=active+1
+            local live=true
+            return{Cancel=function()if live then live=false;active=active-1;cancelled=cancelled+1 end end}
+        end}}end
+    })
+    local cb=function()return true end
+    local sites={{x=1,y=2,z=3,radius=4,metric="xyz"}}
+    assert(not host:attach(1,sites,cb,cb,cb) and active==0 and host.job==nil)
+    failOwner=10
+    assert(not host:attachCompiled(10,2,cb,cb,cb) and active==0 and host.job==nil)
+    failOwner=-1
+    assert(host:attachCompiled(11,2,cb,cb,cb) and active==1)
+    failOwner=12
+    assert(not host:attachCompiled(12,2,cb,cb,cb) and active==1 and host.job)
+    assert(created==3 and cancelled==2 and armFailures==3)
+    host:shutdown()
+    assert(active==0 and cancelled==3 and host.job==nil)
+end
+print("Native location failed registration: zero unowned scheduled jobs; existing owner survives failure, later attach and shutdown PASS")
