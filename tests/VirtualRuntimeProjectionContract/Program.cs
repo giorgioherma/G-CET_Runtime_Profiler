@@ -22,6 +22,65 @@ var root = Path.Combine(Path.GetTempPath(), "gcet-runtime-projection-" + Guid.Ne
 var installedMods = Path.Combine(root, "bin", "x64", "plugins", "cyber_engine_tweaks", "mods");
 var installedEngine = Path.Combine(installedMods, "0-Engine");
 var originalInit = Path.Combine(installedEngine, "init.lua");
+// The native package filename and compiled data lookup must agree.
+// Exercise both historical and canonical layouts without altering a
+// downloaded artifact or treating filename alone as capability evidence.
+var bundleType=core.GetType("GCETRuntimeProfiler.Core.Services.NativeRuntimeBundle",true)!;
+var loadBundle=bundleType.GetMethod("TryLoadFrom",flags)!;
+var deployment=bundleType.GetProperty("DeploymentPath",flags)!;
+var locationDeployment=bundleType.GetProperty("LocationDeploymentPath",flags)!;
+var guard=bundleType.GetMethod("RequireNoConflictingInstalledRuntime",flags)!;
+var namingRoot=Path.Combine(Path.GetTempPath(),"gcet-naming-"+Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(namingRoot);
+try
+{
+    var fixture=Path.Combine(namingRoot,"bundle");
+    Directory.CreateDirectory(fixture);
+    byte[] Payload(bool canonical)
+    {
+        var bytes=new byte[2048];bytes[0]=(byte)'M';bytes[1]=(byte)'Z';
+        Encoding.ASCII.GetBytes("GCETStaticAddAnchor GCETStaticCoordinatorState GCETPlayerVector4Live GCETPlayerVector4Valid").CopyTo(bytes,16);
+        Encoding.Unicode.GetBytes(canonical?"G-Native.locations":"G-CET.locations").CopyTo(bytes,301);
+        return bytes;
+    }
+    void Refuses(Action f,string reason)
+    {
+        try{f();}catch(TargetInvocationException ex) when(ex.InnerException is InvalidOperationException){return;}
+        throw new InvalidOperationException(reason);
+    }
+    object Read()=>loadBundle.Invoke(null,[fixture,true])!;
+    var legacy=Path.Combine(fixture,"GCETStaticLocations.dll");
+    var modern=Path.Combine(fixture,"G-Engine.dll");
+    File.WriteAllBytes(legacy,Payload(false));
+    var old=Read();
+    Check((string)deployment.GetValue(old)=="red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll" &&
+        (string)locationDeployment.GetValue(old)=="red4ext/plugins/G-CET-StaticLocations/G-CET.locations","historical package path contract");
+    File.WriteAllBytes(modern,Payload(true));
+    Refuses(()=>Read(),"duplicate packaged native owners must be refused");
+    File.Delete(legacy);
+    var renamed=Read();
+    Check((string)deployment.GetValue(renamed)=="red4ext/plugins/G-NativeRuntime/G-Engine.dll" &&
+        (string)locationDeployment.GetValue(renamed)=="red4ext/plugins/G-NativeRuntime/G-Native.locations","canonical package path contract");
+    File.WriteAllBytes(modern,Payload(false));
+    Refuses(()=>Read(),"renaming legacy bytes without changing lookup must be refused");
+    var game=Path.Combine(namingRoot,"game");
+    var mods=Path.Combine(game,"bin","x64","plugins","cyber_engine_tweaks","mods");
+    Directory.CreateDirectory(mods);
+    var installedOld=Path.Combine(game,((string)deployment.GetValue(old)!).Replace('/',Path.DirectorySeparatorChar));
+    Directory.CreateDirectory(Path.GetDirectoryName(installedOld)!);
+    File.WriteAllBytes(installedOld,Payload(false));
+    Refuses(()=>guard.Invoke(renamed,[mods]),"enabled historical native DLL must block canonical overlay");
+    Check(File.Exists(installedOld),"migration may not delete installed files");
+    File.Delete(installedOld);
+    guard.Invoke(renamed,[mods]);
+    var installedNew=Path.Combine(game,((string)deployment.GetValue(renamed)!).Replace('/',Path.DirectorySeparatorChar));
+    Directory.CreateDirectory(Path.GetDirectoryName(installedNew)!);
+    File.WriteAllBytes(installedNew,Payload(true));
+    Refuses(()=>guard.Invoke(old,[mods]),"enabled canonical DLL must block historical overlay");
+    guard.Invoke(renamed,[mods]);
+    Console.WriteLine("Native naming: exact paired layouts, mixed package refusal, compiled manifest lookup proof and read-only migration guard PASS");
+}
+finally { Directory.Delete(namingRoot,true); }
 var bundledRoot = Path.Combine(AppContext.BaseDirectory, "runtime", "0-Engine");
 var repoRoot = Directory.GetCurrentDirectory();
 Directory.CreateDirectory(installedEngine);

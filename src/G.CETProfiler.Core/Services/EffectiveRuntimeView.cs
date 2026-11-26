@@ -76,7 +76,7 @@ internal sealed class EffectiveRuntimeView
             ?? Array.Empty<string>(),
         nativeReady = HasNative,
         nativeArtifactSource = "PACKAGED_CI_BINARY",
-        nativeDeploymentPath = HasNative ? NativeRuntimeBundle.GameRootRelativePath : null,
+        nativeDeploymentPath = Native?.DeploymentPath,
         requiresExplicitOverlayDeployment = true
     };
 

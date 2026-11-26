@@ -353,6 +353,7 @@ public static class PassGeneratorService
              Encoding.UTF8.GetString(pair.Value).Contains(
                  NativePlayerVectorStage.Marker, StringComparison.Ordinal)));
         var nativeRuntime = effectiveRuntime.NativeForGeneration(requiresNative);
+        nativeRuntime?.RequireNoConflictingInstalledRuntime(modsRoot);
         // Explicit empty GCAS prevents ghost anchors from a stale overlay.
         var nativeLocations = nativeRuntime is null ? null : availableLocations;
 
@@ -388,7 +389,7 @@ public static class PassGeneratorService
         {
             fileManifest.Add(new
             {
-                path = NativeRuntimeBundle.GameRootRelativePath,
+                path = nativeRuntime.DeploymentPath,
                 appliedTransforms = 0,
                 fixedInfrastructure = true
             });
@@ -398,7 +399,7 @@ public static class PassGeneratorService
         {
             fileManifest.Add(new
             {
-                path = CompiledNativeLocations.GameRootRelativePath,
+                path = nativeRuntime!.LocationDeploymentPath,
                 appliedTransforms = 0,
                 fixedInfrastructure = true
             });
@@ -533,9 +534,9 @@ public static class PassGeneratorService
             nativeRuntime = new
             {
                 included = nativeRuntime is not null,
-                gameRootPath = nativeRuntime is null ? null : NativeRuntimeBundle.GameRootRelativePath,
+                gameRootPath = nativeRuntime is null ? null : nativeRuntime.DeploymentPath,
                 bootstrap = "COMPILED_GCAS_V1_FROM_INSTALLED_AUTHOR_SOURCES; UNKNOWN_OWNER_DYNAMIC_ORIGINAL_FALLBACK",
-                locationFilePath = nativeLocations is null ? null : CompiledNativeLocations.GameRootRelativePath,
+                locationFilePath = nativeLocations is null ? null : nativeRuntime!.LocationDeploymentPath,
                 compiledOwnerCounts = nativeLocations?.OwnerCounts,
                 requiredByGeneratedSource = requiresNative
             },
@@ -608,14 +609,14 @@ public static class PassGeneratorService
             if (nativeRuntime is not null)
             {
                 var entry = archive.CreateEntry(
-                    NativeRuntimeBundle.GameRootRelativePath, CompressionLevel.Optimal);
+                    nativeRuntime.DeploymentPath, CompressionLevel.Optimal);
                 using var stream = entry.Open();
                 stream.Write(nativeRuntime.Bytes, 0, nativeRuntime.Bytes.Length);
             }
             if (nativeLocations is not null)
             {
                 var entry = archive.CreateEntry(
-                    CompiledNativeLocations.GameRootRelativePath, CompressionLevel.Optimal);
+                    nativeRuntime!.LocationDeploymentPath, CompressionLevel.Optimal);
                 using var stream = entry.Open();
                 stream.Write(nativeLocations.Bytes, 0, nativeLocations.Bytes.Length);
             }
