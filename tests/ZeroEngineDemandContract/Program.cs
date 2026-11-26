@@ -514,8 +514,8 @@ return Engine
     {
         string CronLines(string text)=>text.Replace("\r\n","\n").Replace("\n",eol);
         var complete=CronLines(cronGenerated);
-        var partialCron=complete.Replace(CronLines("    table.insert(timers, timer)\n    __gcetCronActive = __gcetCronActive + 1\n    __gcetCronSync()\n    return timer.id"),
-            CronLines("    table.insert(timers, timer)\n    return timer.id"));
+        var partialCron=complete.Replace(CronLines("    table.insert(timers, timer)\n    __gcetCronActive = __gcetCronActive + 1\n    __gcetCronSync()"),
+            CronLines("    table.insert(timers, timer)"));
         Check(partialCron!=complete&&ZeroEngineDemandSource.TryCronProducer(partialCron,out var cronCompleted)&&cronCompleted==complete,
             "Cron partial completion and EOL compatibility");
     }

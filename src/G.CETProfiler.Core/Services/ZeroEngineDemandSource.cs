@@ -1949,13 +1949,11 @@ end
 """;
     private const string CronInsertStock = """
     table.insert(timers, timer)
-    return timer.id
 """;
     private const string CronInsertTracked = """
     table.insert(timers, timer)
     __gcetCronActive = __gcetCronActive + 1
     __gcetCronSync()
-    return timer.id
 """;
     private const string CronHaltStock = """
             timer.active = false

@@ -49,6 +49,7 @@ local function addTimer(timeout, recurring, callback, args)
         args.Resume = Cron.Resume
     end
     table.insert(timers, timer)
+
     return timer.id
 end
 function Cron.After(timeout, callback, data)
