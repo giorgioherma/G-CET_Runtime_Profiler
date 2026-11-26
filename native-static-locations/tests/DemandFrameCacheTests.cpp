@@ -122,5 +122,36 @@ int main(){
  CHECK(!liveDonor.ReadLiveAndShareSpatial(402,true,exact,[&]{liveDonor.Reset();return true;},coarse));
  CHECK(!liveDonor.HasSharedSpatialSample());
  std::cout<<"Strict gameplay donors: two exact acquisitions retained, compatible spatial acquisition eliminated, latest sample/unknown frame/epoch safeguards PASS\n";
+ // Actual strict entry-point policy: frame lookup is a dependency only
+ // when a compatible coarse spatial consumer exists. No hypothetical
+ // display cache prefetch, no stale sample and no additional exact read.
+ DemandFrameCache liveDemand;
+ bool active=false,frameKnown=true;
+ unsigned frames=0,strict=0,donated=0;
+ auto demand=[&]{return active;};
+ auto frame=[&](uint64_t& f){++frames;f=500;return frameKnown;};
+ auto strictRead=[&](Position4& v){++strict;v={float(strict),2,3,1};return true;};
+ auto donorRead=[&](Position4& v,PositionReceiver& id){++donated;id=hero;v={99,2,3,1};return true;};
+ liveDemand.Seed(500,true,{50,2,3,1});
+ for(int i=0;i<100;++i)
+    CHECK(liveDemand.ReadLiveForDemand(demand,frame,strictRead,donorRead,coarse));
+ CHECK(frames==0&&strict==100&&donated==0&&!liveDemand.Valid());
+ CHECK(liveDemand.Read(500,true,strictRead,coarse)&&strict==101&&coarse.x==101);
+ active=true;
+ CHECK(liveDemand.ReadLiveForDemand(demand,frame,strictRead,donorRead,coarse));
+ CHECK(frames==2&&strict==101&&donated==1);
+ CHECK(liveDemand.ReadSharedSpatial(500,true,hero,coarse)&&coarse.x==99);
+ frameKnown=false;
+ CHECK(liveDemand.ReadLiveForDemand(demand,frame,strictRead,donorRead,coarse));
+ CHECK(frames==3&&strict==102&&donated==1&&!liveDemand.Valid());
+ frameKnown=true;
+ auto removes=[&](uint64_t& f){++frames;f=500;active=false;return true;};
+ CHECK(liveDemand.ReadLiveForDemand(demand,removes,strictRead,donorRead,coarse));
+ CHECK(frames==4&&strict==103&&donated==1&&!liveDemand.Valid());
+ active=true;
+ auto invalidate=[&](uint64_t& f){++frames;f=500;liveDemand.Reset();return true;};
+ CHECK(!liveDemand.ReadLiveForDemand(demand,invalidate,strictRead,donorRead,coarse));
+ CHECK(frames==5&&strict==103&&donated==1);
+ std::cout<<"Demand-controlled strict position: 100 exact reads, 100 -> 0 frame-token acquisitions without coarse demand; active/unknown/removal/epoch paths PASS\n";
  std::cout<<"DemandFrameCache PASS\n";
 }

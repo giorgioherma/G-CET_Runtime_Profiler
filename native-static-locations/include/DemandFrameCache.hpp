@@ -86,6 +86,23 @@ public:
         }
         return true;
     }
+    // Exact gameplay does not require the engine frame number. Acquire
+    // that RTTI value only for an actually admitted coarse spatial donor.
+    // Unknown/no demand takes the original exact sampler, invalidating the
+    // opportunistic display cache rather than publishing an untagged value.
+    template<class Demand,class Frame,class Exact,class Donor>
+    bool ReadLiveForDemand(Demand&& demand,Frame&& readFrame,Exact&& exact,
+                           Donor&& donor,Position4& out) {
+        const auto generation=generation_;
+        uint64_t frame=0;
+        const bool known=demand()&&readFrame(frame);
+        if(generation_!=generation){out={};return false;}
+        if(!known||!demand())return Read(0,false,exact,out,true);
+        return ReadLiveAndShareSpatial(frame,true,donor,[&]{
+            uint64_t current=0;
+            return demand()&&readFrame(current)&&current==frame&&demand();
+        },out);
+    }
 private:
     Position4 value_{};
     PositionReceiver sharedReceiver_{};
