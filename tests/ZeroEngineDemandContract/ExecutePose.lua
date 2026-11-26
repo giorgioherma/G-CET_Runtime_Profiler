@@ -8,7 +8,7 @@ local function run(path,backend)
     local calls=0
     Game={}
     if backend and backend~="missing" then
-        Game.GCETReadPlayerPoseV1=function(player)
+        local function typed(player)
             calls=calls+1
             assert(player==current,"receiver changed")
             -- The native typed ABI cannot represent a nil Vector4; refuse
@@ -25,6 +25,8 @@ local function run(path,backend)
             end
             return 1,p,o,yaw
         end
+        Game.GCETReadPlayerPoseV1=typed
+        Game.GCETReadSharedPlayerPoseV1=typed
     end
     State={}
     function CurrentPlayer()return current end
@@ -80,3 +82,38 @@ for _,backend in ipairs({"complete","unsupported","missing","throws"}) do
     assert(calls==(backend=="missing" and 0 or 28),"unexpected native backend attempt count")
 end
 print("Typed pose source: original receiver/read/order/state trace, unsupported-only fallback, missing ABI, native failure and throw without replay PASS")
+
+for _,backend in ipairs({"complete","unsupported","missing","throws"}) do
+    local trace,_,calls=run(root.."/pose-shared.lua",backend)
+    assert(trace==a,"shared pose exact read/failure trace differs: "..backend)
+    assert(calls==(backend=="missing" and 0 or 28),"unexpected shared backend attempt count")
+end
+-- Actual generated host registration, two independent owners. Explicit
+-- coarse arming only while supported; disarm remains original exact ABI.
+for _,supported in ipairs({true,false}) do
+    local coarse,exact,disarm,scheduled=0,0,0,0
+    Game={
+        GCETStaticReady=function()return true end,
+        GCETStaticOwnerCount=function(id)return 1 end,
+        GCETStaticOwnerAnchor=function(id,n)return id*10+n end,
+        GCETStaticArm=function(id,armed)
+            if armed then exact=exact+1 else disarm=disarm+1 end
+            return true
+        end
+    }
+    if supported then Game.GCETStaticArmCoarseSpatialV1=function(id,armed)
+        assert(armed);coarse=coarse+1;return true
+    end end
+    local host=assert(dofile(root.."/spatial-shared.lua")).new({
+        Register=function()return {Schedule={Every=function()
+            scheduled=scheduled+1;return {Cancel=function()end}
+        end}}end
+    })
+    local cb=function()return true end
+    assert(host:attachCompiled(1,1,cb,cb,cb))
+    assert(host:attachCompiled(2,1,cb,cb,cb))
+    assert(scheduled==1 and coarse==(supported and 2 or 0) and exact==(supported and 0 or 2))
+    host:shutdown()
+    assert(disarm==2)
+end
+print("Shared exact pose + explicit two-owner coarse spatial registration, older ABI and cleanup PASS")

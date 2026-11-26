@@ -228,7 +228,7 @@ internal static class ZeroEngineDemandSource
     // first, followed by out parameters in declaration order.
     private const string TypedPoseState =
         "local __gcetPoseNative, __gcetPoseNativeResolved -- G-CET typed pose backend v1";
-    private static string TypedPoseBody(string receiver) => """
+    private static string TypedPoseBody(string receiver,bool sharedSpatial=false) => """
     if not __gcetPoseNativeResolved then
         __gcetPoseNativeResolved = true
         local ok, native = pcall(function() return Game.GCETReadPlayerPoseV1 end)
@@ -246,8 +246,9 @@ internal static class ZeroEngineDemandSource
         -- Unsupported is returned only before any getter executes.
         -- Failed, an exception, or an unknown result must NEVER replay.
     end
-""".Replace("RECEIVER",receiver,StringComparison.Ordinal);
-    internal static bool TryComposePoseReader(string source,bool nativeAvailable,out string next)
+""".Replace("RECEIVER",receiver,StringComparison.Ordinal)
+       .Replace("GCETReadPlayerPoseV1",sharedSpatial?"GCETReadSharedPlayerPoseV1":"GCETReadPlayerPoseV1",StringComparison.Ordinal);
+    internal static bool TryComposePoseReader(string source,bool nativeAvailable,out string next,bool sharedSpatial=false)
     {
         next=source;
         var normalized=NormalizeLf(source);
@@ -256,16 +257,16 @@ internal static class ZeroEngineDemandSource
         if(declarations.Count==1)
         {
             var receiver=declarations[0].Groups["receiver"].Value;
-            var body=Newlines(source,TypedPoseBody(receiver));
+            var bodies=new[]{TypedPoseBody(receiver),TypedPoseBody(receiver,true)};
             var state=Newlines(source,TypedPoseState+"\n");
-            // Normalize only complete known owner fragments, including
-            // independently missing declaration/body (partial overlays).
-            // No arbitrary source or hand-modified backend is overwritten.
-            if(Count(candidate,state)>1||Count(candidate,body)>1)return false;
+            // One existing owner: upgrade/downgrade either known ordered
+            // backend, including missing declaration or missing body.
+            if(Count(candidate,state)>1||bodies.Sum(body=>Count(candidate,Newlines(source,body)))>1)return false;
             if(Count(candidate,state)==1)candidate=candidate.Replace(state,"",StringComparison.Ordinal);
-            if(Count(candidate,body)==1)
+            foreach(var body in bodies)
             {
-                if(!ReplaceUnique(ref candidate, declarations[0].Value+"\n"+TypedPoseBody(receiver)+"\n",
+                if(Count(candidate,Newlines(source,body))==1&&
+                   !ReplaceUnique(ref candidate,declarations[0].Value+"\n"+body+"\n",
                     declarations[0].Value+"\n"))return false;
             }
         }
@@ -282,29 +283,96 @@ internal static class ZeroEngineDemandSource
         if(helper.Count!=1)return false;
         var name=helper[0].Groups["receiver"].Value;
         var header=helper[0].Value;
-        if(!ReplaceUnique(ref plain,header+"\n",TypedPoseState+"\n"+header+"\n"+TypedPoseBody(name)+"\n"))
+        if(!ReplaceUnique(ref plain,header+"\n",TypedPoseState+"\n"+header+"\n"+TypedPoseBody(name,sharedSpatial)+"\n"))
             return false;
         next=plain;return true;
     }
 
-    internal static int TryStagePose(ref FixedZeroEngineBuild framework,List<object> manifest,bool nativeAvailable=false)
+    internal const string SpatialHostPath="0-Engine/modules/GCETNativeLocationHost.lua";
+    private const string SpatialArmHelper="""
+-- G-CET explicit coarse spatial freshness v1
+local function __gcetArmSharedSpatial(id)
+  local ok,armed=pcall(native,"GCETStaticArmCoarseSpatialV1",id,true)
+  if ok and armed==true then return true end
+  return native("GCETStaticArm",id,true)
+end
+""";
+    // One generic registration owner. Only arm calls inside the known
+    // attach/attachCompiled lifecycle are admitted; all original disarms,
+    // polling, transition callbacks, UNKNOWN and exact fallback survive.
+    internal static bool TrySharedSpatialHost(string source,bool enabled,out string next)
+    {
+        next=source;
+        var helper=Newlines(source,SpatialArmHelper+"\n\n");
+        var candidate=source;
+        var helperCount=Count(candidate,helper);
+        if(helperCount>1)return false;
+        if(helperCount==1)candidate=candidate.Replace(helper,"",StringComparison.Ordinal);
+        const string oldCall="native(\"GCETStaticArm\",key,true)";
+        const string newCall="__gcetArmSharedSpatial(key)";
+        var armLine=new Regex(@"(?m)^(?<indent>[ \t]*)assert\((?<call>native\(\s*""GCETStaticArm""\s*,\s*key\s*,\s*true\s*\)|__gcetArmSharedSpatial\(\s*key\s*\))\s*==\s*true\)[ \t]*(?=\r?$)",RegexOptions.CultureInvariant);
+        var matches=armLine.Matches(candidate).Cast<Match>().ToArray();
+        // Verify exactly the two author-owned attach paths; don't admit an
+        // additional foreign arm or disable a customized helper.
+        var attach=Regex.Matches(candidate,@"(?m)^function Host:attach\([^\r\n]*\)");
+        var compiled=Regex.Matches(candidate,@"(?m)^function Host:attachCompiled\([^\r\n]*\)");
+        var site=Regex.Matches(candidate,@"(?m)^function Host:attachPerSite\([^\r\n]*\)");
+        if(matches.Length!=2||attach.Count!=1||compiled.Count!=1||site.Count!=1||
+           !(attach[0].Index<matches[0].Index&&matches[0].Index<compiled[0].Index&&
+             compiled[0].Index<matches[1].Index&&matches[1].Index<site[0].Index)||
+           Count(candidate,"local function native(name,...)")!=1||
+           Count(candidate,"function Host.new(engine)")!=1||
+           Count(candidate,"function Host:shutdown()")!=1||
+           Count(candidate,"GCETStaticArmCoarseSpatialV1")!=0)return false;
+        var stripped=candidate;
+        foreach(var m in matches.Reverse())
+            stripped=stripped.Remove(m.Index,m.Length);
+        if(stripped.Contains("__gcetArmSharedSpatial",StringComparison.Ordinal)||
+           stripped.Contains("G-CET explicit coarse spatial freshness v1",StringComparison.Ordinal))return false;
+        foreach(var m in matches.Reverse())
+        {
+            var g=m.Groups["call"];
+            // Preserve harmless author whitespace in exact original arms.
+            if(!enabled&&g.Value.StartsWith("native",StringComparison.Ordinal))continue;
+            if(enabled&&g.Value==newCall)continue;
+            candidate=candidate.Remove(g.Index,g.Length).Insert(g.Index,enabled?newCall:oldCall);
+        }
+        if(enabled)
+        {
+            var anchor="function Host.new(engine)";
+            if(!ReplaceUnique(ref candidate,anchor,SpatialArmHelper+"\n\n"+anchor))return false;
+        }
+        next=candidate;return true;
+    }
+
+    internal static int TryStagePose(ref FixedZeroEngineBuild framework,List<object> manifest,
+        bool nativeAvailable=false,bool sharedSpatialAvailable=false)
     {
         if(!framework.Files.TryGetValue(InitPath,out var bytes))return 0;
         var source=Encoding.UTF8.GetString(bytes);
-        if(!TryComposePoseReader(source,nativeAvailable,out var next)||next==source)return 0;
+        var host=framework.Files.TryGetValue(SpatialHostPath,out var hostBytes)?Encoding.UTF8.GetString(hostBytes):null;
+        string? hostNext=null;
+        var share=nativeAvailable&&sharedSpatialAvailable&&host is not null&&
+            TrySharedSpatialHost(host,true,out hostNext);
+        if(!TryComposePoseReader(source,nativeAvailable,out var next,share))return 0;
+        if(!share&&host is not null&&TrySharedSpatialHost(host,false,out var exactHost))
+            hostNext=exactHost;
+        if(next==source&&(hostNext is null||hostNext==host))return 0;
         var files=framework.Files.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.OrdinalIgnoreCase);
         files[InitPath]=Encoding.UTF8.GetBytes(next);
+        if(hostNext is not null&&hostNext!=host)files[SpatialHostPath]=Encoding.UTF8.GetBytes(hostNext);
         framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
             SHA256.HashData(files[InitPath])).ToLowerInvariant()};
         manifest.Add(new{type="FRAMEWORK_POSE_READER",Owner="0-Engine",RuleId="0engine-shared-pose-reader",
             file=InitPath,contract="GCET_FRAMEWORK_POSE_READER_V1",
             Handler="ZeroEngineDemandSource",PolicyClass="SAME_PHASE_REUSE_PROTECTED_FUNCTION",
             sourceProof=true,nativeReadCountChanged=false,callbackOrCadenceChanged=false,
-            backend=nativeAvailable?"OPTIONAL_ORDERED_TYPED_POSE_V1":"ORIGINAL_CET_READS",
+            backend=share?"EXPERIMENTAL_EXACT_POSE_COARSE_SPATIAL_SHARED_SAMPLE":
+                nativeAvailable?"OPTIONAL_ORDERED_TYPED_POSE_V1":"ORIGINAL_CET_READS",
+            sharedSpatialAdmitted=share,exactGameplayFreshnessUnchanged=true,
             runtimePerformance="NOT_MEASURED"});
         return 1;
     }
-
 
     private const string FrameDemandMarker = "-- G-CET frame emitter demand v1";
     private const string FrameDemandBind = "local __gcetDemand = require('modules/G-CET/Scheduler').Demand";

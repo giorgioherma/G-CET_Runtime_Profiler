@@ -359,6 +359,38 @@ return UpdateFrame
         true,out var typedPartial)&&typedPartial==typedPose,"missing typed pose state must converge");
     Check(!ZeroEngineDemandSource.TryComposePoseReader(typedPose.Replace(
         "if status ~= 0 then","if status ~= 2 then"),true,out _),"changed native status protocol refused");
+    // The optional spatial path is atomic with the exact existing pose
+    // owner and registration source. It cannot silently enable the new
+    // freshness contract on the old production DLL.
+    var spatialSource=File.ReadAllText("resolver-runtime/0-Engine/modules/GCETNativeLocationHost.lua");
+    Check(ZeroEngineDemandSource.TrySharedSpatialHost(spatialSource,true,out var spatialShared)&&
+          spatialShared.Contains("GCETStaticArmCoarseSpatialV1"),"actual spatial host registration admission");
+    Check(ZeroEngineDemandSource.TrySharedSpatialHost(spatialShared,true,out var spatialRepeat)&&
+          spatialRepeat==spatialShared,"coarse spatial repeat");
+    Check(ZeroEngineDemandSource.TrySharedSpatialHost(spatialShared,false,out var spatialExact)&&
+          spatialExact==spatialSource,"older DLL exact host restoration");
+    Check(!ZeroEngineDemandSource.TrySharedSpatialHost(spatialSource.Replace(
+        "assert(native(\"GCETStaticArm\",key,true)==true)","customArm(key)"),true,out _),
+        "foreign registration drift must not authorize coarse freshness");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(typedPose,true,out var sharedPose,true)&&
+          sharedPose.Contains("Game.GCETReadSharedPlayerPoseV1"),"shared typed backend upgrade");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(sharedPose,true,out var sharedPoseAgain,true)&&
+          sharedPoseAgain==sharedPose,"shared typed backend repeat");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(sharedPose,true,out var sharedPoseOld)&&
+          sharedPoseOld==typedPose,"exact typed fallback");
+    var sharedFramework=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
+        [ZeroEngineDemandSource.InitPath]=Encoding.UTF8.GetBytes(poseFixture),
+        [ZeroEngineDemandSource.SpatialHostPath]=Encoding.UTF8.GetBytes(spatialSource)
+    },"","","","");
+    Check(ZeroEngineDemandSource.TryStagePose(ref sharedFramework,new(),true,true)==1&&
+          Encoding.UTF8.GetString(sharedFramework.Files[ZeroEngineDemandSource.InitPath]).Contains("GCETReadSharedPlayerPoseV1")&&
+          Encoding.UTF8.GetString(sharedFramework.Files[ZeroEngineDemandSource.SpatialHostPath]).Contains("GCETStaticArmCoarseSpatialV1"),
+          "atomic host/producer generation");
+    Check(ZeroEngineDemandSource.TryStagePose(ref sharedFramework,new(),true,true)==0,
+        "atomic shared production idempotence");
+    Check(ZeroEngineDemandSource.TryStagePose(ref sharedFramework,new(),true,false)==1&&
+          ZeroEngineDemandSource.TryStagePose(ref sharedFramework,new(),true,false)==0,
+          "atomic exact fallback repeat");
     if(privateSource)
     {
         var poseStock=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
@@ -381,6 +413,8 @@ return UpdateFrame
         File.WriteAllText(Path.Combine(root,"pose-original.lua"),poseFixture);
         File.WriteAllText(Path.Combine(root,"pose-generated.lua"),poseNext);
         File.WriteAllText(Path.Combine(root,"pose-typed.lua"),typedPose);
+        File.WriteAllText(Path.Combine(root,"pose-shared.lua"),sharedPose);
+        File.WriteAllText(Path.Combine(root,"spatial-shared.lua"),spatialShared);
         var posePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
         posePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecutePose.lua");
         posePsi.ArgumentList.Add(root);

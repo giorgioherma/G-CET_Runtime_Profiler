@@ -18,6 +18,16 @@ internal sealed record NativeRuntimeBundle(byte[] Bytes, string Sha256)
     internal bool HasTypedPoseRead =>
         Encoding.Latin1.GetString(Bytes).Contains("GCETReadPlayerPoseV1",StringComparison.Ordinal);
 
+    internal bool HasSharedSpatialPose
+    {
+        get
+        {
+            var content=Encoding.Latin1.GetString(Bytes);
+            return content.Contains("GCETReadSharedPlayerPoseV1",StringComparison.Ordinal)&&
+                   content.Contains("GCETStaticArmCoarseSpatialV1",StringComparison.Ordinal);
+        }
+    }
+
     internal bool HasObserverDemand
     {
         get

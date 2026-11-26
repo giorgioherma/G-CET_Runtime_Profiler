@@ -190,7 +190,9 @@ public static class PassGeneratorService
         var centralDemandTransforms = ZeroEngineDemandSource.TryStage(
             modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
             transformManifest, skipped);
-        var poseReaderTransforms = ZeroEngineDemandSource.TryStagePose(ref fixedRuntime, transformManifest, effectiveRuntime.Native?.HasTypedPoseRead == true);
+        var poseReaderTransforms = ZeroEngineDemandSource.TryStagePose(ref fixedRuntime, transformManifest,
+            effectiveRuntime.Native?.HasTypedPoseRead == true,
+            effectiveRuntime.Native?.HasSharedSpatialPose == true);
         var frameEmitterTransforms = ZeroEngineDemandSource.TryStageFrameEmitters(ref fixedRuntime, transformManifest);
         var lifecyclePlayerTransforms = ZeroEngineDemandSource.TryStageLifecyclePlayer(modsRoot, ref fixedRuntime, staged, appliedTransformsByFile, transformManifest);
         centralDemandTransforms += poseReaderTransforms + frameEmitterTransforms + lifecyclePlayerTransforms;
