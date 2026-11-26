@@ -1,0 +1,136 @@
+# G-CET engineering contract
+
+### MANDATORY — generic native observer demand acceptance (owner approval 2026-11-25)
+- Build once for arbitrary CET Before/After notification observers. No mod, event or variable-name allowlist; OnAction is a measurement target only. Use exactly the existing Scheduler.Demand and native observer ownership/epoch infrastructure.
+- Reusable source rules: existing Scheduler-managed observer; pure notification emitter with proven subscription ownership; leading side-effect-free early return with proven lexical state and all mutation paths. Start with simple local-variable guards, then table fields only with proven alias/metatable/escape ownership. Complex predicates are not a current priority.
+- Prove registration identity, Lua truthiness, lexical scope, all writes, lifecycle, reentrancy and source compatibility. Keep original guard and registration order. Uncertain/foreign/always-required callbacks remain stock. No native gameplay predicate, no per-dispatch scan of subscribers, no extra scheduler/polling.
+- Individual suppression first: evaluate the current authoritative demand at each original callback position, including changes made by earlier callbacks in the same invocation. Chain-wide marshalling suppression later only with complete authoritative membership, phase/override/GC and engine reentrancy proof. After can activate during the engine call; never reconstruct historical arguments. Never silence profiler evidence.
+- Acceptance: actual untouched source, partial completion, repeated generation, drift refusal, mixed native contexts and immediate activation. Audit the whole supplied collection: distinct literal registration sites, source-proven eligible/refused by reason, actual live bindings, eliminated Lua invocations, eliminated marshalling and incremental guard CPU/allocation cost. Candidate counts and native fixtures are not gameplay measurements. No promotion until loaded official/profiler parity and measured net benefit. Avoid a prolonged infrastructure cycle; get a measured mixed-chain slice first.
+
+
+### One demand controller, one scheduler (owner clarification 2026-11-25)
+Centralize demand, dependencies, cadence, deadlines, activation/removal and freshness in the existing canonical G-CET Scheduler. No per-mod scheduling implementations, per-function timers, competing demand managers or parallel frame dispatcher. Framework service adapters expose producers and their dependency contracts once; existing subscription/registration/handle paths supply demand. Consumer callbacks retain their own delivery order, timing and semantics. Use one coordinated frame plan before the first demanded producer/consumer executes, with shared results, exact existing clock/phase constraints and explicit on-demand/event paths. The known host currently calls Scheduler.Update AFTER UpdateFrame: demand planning must be available before expensive host reads, without adding a second CET onUpdate or advancing existing job clocks twice. Do not introduce an unused controller API or merely add local modulo guards across service functions as the architectural solution. Start by auditing current scheduler and host callback integration, all consumers (including retained legacy state), then implement a real connected vertical slice with execution and lookup-count proof. Preserve the existing profiler scheduler compatibility/telemetry and foreign host fallback; update canonical generation and compatible partial source at the source owner, not via a later corrective pass.
+
+
+## MANDATORY — demand-driven 0-Engine architecture (owner decision 2026-11-25)
+
+Demand-driven execution is a universal framework invariant, not a collection-size mode, optional setting, per-mod exception or blanket throttle. Each recurring producer, native lookup, observer body, event dispatcher, timer and scheduler job must be justified by an actual consumer (including internal dependencies and profiler-only measurement requirements). Zero consumers means zero recurring service work, including wake/registration polling. Registration or actual supported subscription activates only the necessary dependency chain; explicit unsubscribe/pause/disable and last-consumer removal release demand. Do not activate services merely because a mod imports or registers with Engine. For observer delivery, test actual effective listener demand before target/entity/effect/action lookup, marshalling, derivation or allocation when safe; a native callback that cannot be removed may use the cheapest correct early return. Do not skip internal state maintenance, transition history, cleanup or a synchronous getter solely because an event has no external observers. Prove all such dependencies and preserve first-use/freshness, timing, direct/retained state reads, callback order, return values, errors and legacy compatibility. Getter-only paths resolve on demand and share proven valid data, not fabricated defaults. Use existing registration/handle/event ownership, not a parallel scheduling framework. Native changes permitted when needed, but preserve normal CET behavior and measurement correctness. No speculative discovery polling, no corrective pass, no fixed mod list/version lock, no suppressing profiling to manufacture savings. See GCO CET_profiler_integrity investigation for corrected PROFILE B captures and stage ledger.
+
+### Mandatory cadence aggregation (owner decision 2026-11-25)
+Activation alone never implies per-frame refresh. Each producer uses the fastest **active** consumer's proven freshness/clock requirement; share results and read only demanded fields, preserve each consumer's own delivery cadence. Recalculate demand on registration, pause/resume, enable/disable, cancellation and last removal, not by enumerating subscribers every frame. Event-only consumers use their event, not polling. Getter-only consumers fetch when needed. Honor phase/offset, game vs real time, lifecycle, first-use and latency: a single fastest-period timer may miss a slower consumer's differently phased deadline (e.g. 5- and 7-frame jobs). Where deadlines are exact, refresh on the union of actual due frames (at most once per frame), or immediately before a due consumer if necessary; never silently move its callback phase or provide stale state. Unknown legacy consumers retain their proven original freshness until audited. No arbitrary cadence changes or new parallel scheduler. Test multiple rates, nondivisible periods, registration/removal, pause/resume, zero consumers and actual lookup counts.
+
+### Required demand proof and acceptance
+
+- Audit all producers and their internal/external consumers: explicit subscriptions, direct getters, state proxies and retained nested references, frame/timer jobs, spatial registrations/queries, lifecycle/storage/UI, native observers and generated adapters. Classify continuous, synchronous-only, internal dependency, inactive/wake, and measurement-only demand. Uncertain legacy dependencies retain necessary existing behavior until proven; never silently stale state.
+- Make the earliest cheap demand decision before costly native/Lua crossings and temporary allocations. No observers is sufficient to skip pure notification work, not state used by another consumer. Empty sets/queues/listener buckets take existing cheapest correct return; shared immutable or cached responses only where ownership and freshness permit. Supported dynamic registration is activation, not a reason to poll for registrations. Native init-only/single-slot event semantics remain authoritative.
+- Verify actual generated code from untouched, partial, complete and compatible custom source: no-consumer unprofiled recurring service cost zero; profiled no-consumer only genuine measurement overhead; getter-only fresh state and no recurring service; each independently active service and transitive dependencies; enable/disable/unsubscribe/last removal; transitions, callbacks, cleanup, unknown legacy fallback; combined sources and idempotence. Test native lookup counts, allocation operations/bytes, correct results and observable order, not merely presence of a guard or marker. Compare corrected A/B before claiming gains.
+
+
+> **Startup/build contract:** [CORE.md](../HANDOFF/CORE.md) is the first-read summary, [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md) is the authoritative two-workflow procedure (native CI = DLL only; main CI = Profiler + Resolver packages), and [PRODUCT-STATUS.md](../product/PRODUCT-STATUS.md) is the current capabilities/remaining-work overview. The details below are the durable Resolver engineering contract.
+
+## Mandatory evidence acquisition and approved semantic admission
+
+When measurement can improve attribution, implementation accuracy, native/Lua boundary analysis, wake/lifecycle safety or verification, it is required. If that evidence is not currently captured, **extend the native instrumentation, managed Profiler, reports and Profiler → Resolver handoff to collect and carry it** with bounded capture cost, accurate scope, contracts and uncertainty/unknown fields. A missing useful measurement is a development requirement, not a reason to disregard profiler evidence. If capture is genuinely infeasible or behavior-distorting, document exactly why and use an explicitly reviewed alternate proof and validation path. Do not assign shared native marshalling cost to an individual mod without evidence.
+
+After full source review and explicit approval of a safe mod-specific semantic implementation, low, zero or absent workload in one capture must not block generation of missing supported stages. Source-only admission requires known installed owner, catalog opt-in, authored wake/lifecycle proof, verified anchors and postconditions, idempotence, drift refusal and fallback. Report absent values as null/`NOT_MEASURED`, never as inferred zero or fabricated savings. Generic AUTO remains measurement/mechanical-proof gated. **Measure and add missing useful measurements for accuracy; do not use measured popularity as a veto on an approved source-safe semantic rule.**
+
+## Goal and historical results
+
+G-CET Runtime Profiler measures heavily modded Cyberpunk 2077 CET/Lua; G-CET Resolver applies proven optimizations **to original/current mod source**. This project began with compatible 0-Engine integration and semantic optimization of measured big offenders, then systematic testing of essentially all Nexus mods carrying CET tags in the user's collection. The user repeatedly measured **over 50% lower CET workload** on tested stacks. That's valuable observed progress, *not a guarantee of universal correctness or performance*.
+
+We are extending the same Resolver with burst/hitch and G-GC allocation evidence. The objective is to discover more reusable generic rules and worthwhile semantic rules **without degrading author behavior**. The internal decision-maker is not a separate player-facing optimizer.
+
+## Product version policy (explicit user instruction)
+
+**Version increments are not tied to CI frequency.** Keep the current shared Profiler/Resolver version across normal commits, tests, native DLL rebuilds, diagnostics and packaging reruns. Increase it **only** when the user explicitly requests it or agrees that a substantial project milestone warrants a release. A new native hash/run pin is not, by itself, a product version milestone. When authorized, synchronize `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json.packageVersion`; otherwise identify builds by commit SHA and Actions run ID. See [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md). Do not automatically replace an official release/tag.
+
+## The single ordered pipeline
+
+1. **Capture real work.** Profiler collects exclusive CPU time, call rates, spikes, bursts, Scheduler workload, G-GC allocation counts/bytes/births, and optional frametime evidence. Record native revision, capture duration, source stack and coverage.
+2. **Resolve current source.** Read live original mod files and dependencies. Detect installed generic changes, semantic postconditions, 0-Engine integration, manual modifications, and partial states. Identity/version naming alone never proves code behavior.
+3. **Apply broadly safe generic transforms first to staged files.** Examples: callback consolidation, finite OnAction routing, source-proven `PLAYER` provider reuse with author fallback. Never assume all caches, queries or allocations are safe to deduplicate.
+4. **Apply eligible semantic transformations second to staged generic output.** Cadence, dormancy, quest/event wake, near/far activity and bespoke heavy hotpaths use full source proof and lifecycle analysis. A generic and semantic pass may act on the **same mod**; each must recognize what is already satisfied.
+5. **Compose rather than override.** Check exact postconditions across files. A partially 0-Engine-integrated mod can receive **only missing proven pieces**. Avoid double-injecting scheduler lanes or silently rolling back previous work. Fail closed for ambiguous partial states.
+6. **Generate an overlay ZIP** containing only user-present source files and allowed 0-Engine additions. Resolver doesn't alter the live installation; user deliberately applies it.
+7. **Validate behavior and performance.** Original source → generated output; syntax/contract/marker tests; cross-version structural variants; idempotent second run; gameplay; comparable before/after capture.
+
+**Important:** If a generated pass breaks a mod, repair the **existing generating logic** and retest from the **untouched original mod**. A separate semantic that repairs the old broken output is not an acceptable permanent solution.
+
+## Generic rules: risk-adjusted, system-level payoff
+
+We actively look for **widely applicable** generic improvements. Lower risk permits lower payback; risk close to zero plus broad use can justify many small wins.
+
+- Measure benefit at the natural unit: callback family, shared provider, many independent owners, 0-Engine dispatch group or complete mod stack—not only one cold-looking callback.
+- Account for mean exclusive CPU, number of engine calls, allocation operations/bytes, bursts and frame-pacing spikes. Frame consolidation may improve pacing without removing logical Lua callback work.
+- Mechanically proven transforms may be admitted with small individual benefit; moderate-risk transforms need clear aggregate benefit. Bespoke timing/lifecycle changes need substantial offender-level payback.
+- Enforce source receiver identity, read-only semantics, no-escape/no-alias proof, freshness, native-handle lifetime, valid invalidation, errors/fallback and event ordering. Do **not** automatically cache arbitrary Game APIs.
+- `PLAYER` is the first enabled safe shared-provider family; other source-recognized providers remain analysis-only until source proof and tests support generation.
+- A high G-GC allocation counter is a research lead, **not** permission to lower admission thresholds or generate a rewrite.
+
+## Semantic library: system patterns, not version-specific mod patches
+
+Semantic rules are developed by **workload-led investigation** of hot mods/callbacks (Lua execution, Lua → native calls, native → Lua marshalling/dispatch, allocations and spikes), then implemented using **author-specific source-proven lifecycle/wake behavior**. The production semantic library retains safe, confirmed optimizations even when their individual cost is small or their wake events were not observed in a given capture.
+
+Production catalog entries must have an implemented and reviewed source injector, current-source proof, postconditions, idempotence, supported author-source variants and relevant behavior/wake validation. The standard **3 ms/s exclusive** boundary is an investigation priority, **never** a generation veto for a production-enabled semantic injector on supported current source. A registered callback with **zero captured calls or Lua CPU** can still generate an independently source-proven semantic stage; a missing generic profiler wake-path signal does not invalidate the mod-source proof. An absent callback record is not evidence of absence of a wake event. Reviewed production rules can **explicitly opt into** `generation.sourceIndependentAdmission`: match one unique installed mod folder, verify its current source and missing stages, then emit a separate `semanticSourceOnlyCandidates` lane. This may generate a source-proven pass without any callback row, but must never manufacture callback identity, rate, Lua CPU or native allocation ownership. Rules lacking that explicit opt-in remain callback-row-driven until individually reviewed.
+
+Once a source-safe semantic rule has been implemented, tested, and confirmed to the required safety level, it should **generate every missing stage** against supported pristine or already-optimized mod sources without trivial rejection for low/zero measured cost. Refuse a particular source only for an explicit proof, compatibility, stage-completion, or real behavioral-safety reason, and report that reason. The same admission policy governs analysis and generation. Generic AUTO and inferred dormancy/wake transitions retain their independent, stricter proofs; allocator coincidence alone never authorizes changes.
+
+**Version adaptability:** prefer author method shapes, source control flow, state transitions, module relationships, register/cleanup patterns, API call semantics, and stable behavioral source anchors. Don't hardcode ZIP/version number, injected registration ID, exact line number, a particular whitespace form, or incidental local variable names when behavior-equivalent versions can be matched. Name-independent matching needs strong unique fingerprints. An incompatible structural change must fail closed rather than invent a patch.
+
+**Example: Street Games Playable Poker.** This is an unusually aggressive location optimization—not merely slowing `onUpdate`. The desired existing semantic emits **two coordinated source edits**: `init.lua` scheduler lanes (active realtime; near seat 10 Hz; near world 5 Hz; far world 1 Hz) and `StreetTables.lua` (25 m squared-distance wake signal). Preserve chair spawn/despawn/trace semantics and exact map-pin/category registration. Original mod input must yield this complete result. No obsolete one-file or repair-only rule.
+
+**Example: Tunnel Rescue / Big Adam.** The known bug was the generating injector emitting literal named-regex placeholders as Lua. Preserve source-level corrected callback substitution, outside 150 ms decision cadence, inside realtime life/swimming/street execution, cleanup, quest mappins and diagnostics. The user's installed local mod was already corrected; permanent fix is the original→Resolver path.
+
+**Example: Starman / Ziggy.** The v3 semantic combines bounded navigation-mappin diagnostics and main controller gate in one rule. Stable unaccepted `offered` state, V >130 m from the giver, no dialogue and valid session → cheap frequent proximity probe/full controller 4 Hz. Nearby/accepted/uncertain or dialogue states → original per-frame updates. Preserve elapsed dt, shard discoverability, journal, full mission progression and teardown. Do not replace it with generic blind 4 Hz.
+
+### Quest journal lifecycle is not runtime activity
+
+Many modded quests create/offer their journal entry as part of initialization or registration; some may remain progression-locked or untouched. **A journal entry, tracked/registered mappin, quest-offer fact or flag named `questArmed` does not on its own prove accepted, started or currently active gameplay.** Tunnel is an observed counterexample: its journal-offer routine sets `questArmed=true` before acceptance, defeating the earlier quiet-status gate and producing periodic diagnostic JSON spikes. This distinction applies as a **general admission rule**, not a claim that every quest mod uses the same registration sequence.
+
+For every quest dormancy pass, audit the mod's source-defined state transitions and distinguish `registered/visible`, `offered`, `progression-locked`, `accepted/started`, `currently interacting`, `recovering/cleaning up`, and `completed` as supported by that particular mod. Determine which transitions or proximity checks need immediate wake. Keep journal availability, mission discovery, activation, dialogue, timers, UI and recovery semantics intact; optimize only source-proven work that is unnecessary in passive states. Spikes absent from captures are encouraging evidence for existing gates, **not proof of correctness for every future quest stage**. Avoid sweeping rewrites of other quest gates without separate source proof and measurements.
+
+## 0-Engine runtime contract
+
+The existing Scheduler and 0-Engine mod integration may be part of a generated eligible pass, never a blind bulk rewrite of user runtime files. GCET opt-in modules:
+
+| Service | Appropriate use | Critical limit |
+| --- | --- | --- |
+| `Engine.WorkQueue` | Spread **separable** safe operations over multiple frames | Soft budget cannot preempt one expensive Lua/native function |
+| `Engine.PhasePlanner` | Defer noncritical bounded-lateness maintenance | No quest/input/render deadlines or order-sensitive handlers |
+| `Engine.FrameListeners` | Pause/resume adopted frame callbacks when lifecycle is known | Resume can alter listener ordering |
+| `Engine.StateSignals` | Subscribe to cached state transitions (vehicle, combat, menu, district) | No new polling loop; generations invalidate on world/session change |
+
+These are **infrastructure APIs**; existing mods do not become automatically dormant simply because the services exist. Measurements of nested service work are not added to parent CET callback time. Protect foreign files, manual framework modifications, and current 0-Engine integration.
+
+## Mandatory correctness gates
+
+- **Source**: actual original author files + staged generic result, owner/dependency graph, variant signatures, complete transformation and no unknown file replacement.
+- **Feature behavior**: startup/onInit, map pins, quest objectives/shards, dialogue, combat, input/UI, timers, close/shutdown, reload/session generation, forced failure and fallback.
+- **Data**: avoid mutable table sharing, stale native userdata handles, changed ordering/equality/tie behavior, escaped temporary tables or hidden API side effects.
+- **Composition**: generic before semantic, marker/postconditions, multi-file atomicity, partial 0-Engine state, second-run idempotence.
+- **Generation**: no literal regex placeholders, valid Lua local budget, only permitted live source files, consistent manifest and install/restore semantics.
+- **Tests**: actual original + compatible variant, synthetic fixture, generated diff, source syntax, CI, in-game gameplay and matched captures.
+- **Reporting**: distinguish measured, inferred, prospective and unverified. No invented speedup, GC ownership or time saved.
+
+## Code locations
+
+- `src/G.CETProfiler.Core/Services/CallbackResolverService.cs` — callback classification and generic/semantic decisions.
+- `src/G.CETProfiler.Core/Services/SemanticLibraryService.cs` — identity, source proof, postconditions, already-satisfied/partial treatment.
+- `src/G.CETProfiler.Core/Services/PassGeneratorService.cs` — pass composition and output.
+- `src/G.CETProfiler.Core/Services/SemanticPassGeneratorService.cs` — semantic generation admission and staging.
+- `src/G.CETProfiler.Core/Services/SemanticInjectors.cs`, other specialized injectors — source transformations.
+- `resolver-knowledge/semantic-library.json` — *production* semantic rules, not speculative candidates.
+- `resolver-runtime/0-Engine/` — pinned/safe runtime additions.
+- `tests/*.ps1`, `.github/workflows/build.yml` — regression and build/release contracts.
+
+For GC-focused work, continue with [GC-RESEARCH.md](../gc/GC-RESEARCH.md). For **current build and validation state**, consult [CORE.md](../HANDOFF/CORE.md) and [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md); [ACTIVE-STATE.md](../history/ACTIVE-STATE.md) contains dated historical context.
+
+
+## Current-source completion admission (November 4, 2026)
+
+A source-aware rule must distinguish **new work**, **proven already complete**, **partially installed but safely recoverable**, and **unsafe source drift**. ANALYZE must use source-level postconditions from the **same authoritative generic/semantic generator**, not historical capture ownership, a catalog marker, an exact Lua release, or a source fingerprint. A proven complete rule must not be advertised as generation-ready or later reported as a failed attempt. Markers can identify an implementation to investigate but cannot prove behavior, caller routing, worker availability, lifecycle or wake/UNKNOWN fallback.
+
+All currently installed root-entrypoint owners are eligible for source-first generic and source-independent semantic rules independent of whether the selected capture measured them. Repeat generation skips only stages independently proven complete; other missing stages for the **same mod** remain eligible. A missing external worker must be generated by its authoritative owner when the source bridge is independently proven; drifted/foreign worker or source refuses modification. Native source owners must not be re-optimized as generic author Lua after semantics. G-GC retains a complete source-proven same-capture calibration and recalibrates only from changed measured evidence.
+
+The workflow `.github/workflows/original-cet-source.yml` exercises an entire untouched-source overlay applied to an ephemeral live-style stack, then re-analyzes and attempts a second pass. The test enforces zero newly offered generic/semantic rules, zero duplicate transformations, zero generation failures, unchanged G-GC, and tests a newly installed owner with no capture evidence receiving source-first generic optimization. It must not expose private mod files or capture data in logs or artifacts. This contract is source/CI evidence; gameplay equivalence requires independent in-world measurement.
+
