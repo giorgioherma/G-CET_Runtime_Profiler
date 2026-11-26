@@ -526,6 +526,51 @@ jobs:
             throw "HOTSCENES_OPTIN_FIRST_PASS_FRAME_MISMATCH: expected=$($expected.Count) actual=$($generated.Count)"
           }
           Write-Host ('Hotscenes real original opt-in first-pass: '+$generated.Count+' frame stages; no local limit')
+      - name: Verify experimental shared producer against the complete untouched stack
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Development-only fixture, not the production runtime pin. Never publish this copy.
+          $run = 45740205250
+          $meta = (& gh run view $run --repo ${{ github.repository }} --json headSha,status,conclusion | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0 -or $meta.headSha -ne '46340fe05046dd8fdc2a85a7d628c3fc2b04f9fd' -or $meta.status -ne 'completed' -or $meta.conclusion -ne 'success') { throw 'EXPERIMENTAL_NATIVE_PROVENANCE' }
+          $temp = Join-Path $env:RUNNER_TEMP 'gcet-experimental-native'
+          $runtime = Join-Path $temp 'resolver'
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          try {
+            Copy-Item 'ci-resolver/*' $runtime -Recurse -Force
+            gh run download $run --repo ${{ github.repository }} --name gcet-static-native-experimental --dir (Join-Path $temp 'artifact')
+            if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_NATIVE_DOWNLOAD' }
+            $dll = Join-Path $temp 'artifact/red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll'
+            $expected = 'a1a3aa434d57272c6353f33dfe86ecdd0625854957512d227a72025aaab8111c'
+            if ((Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'EXPERIMENTAL_NATIVE_HASH' }
+            Copy-Item $dll (Join-Path $runtime 'runtime/native/GCETStaticLocations.dll') -Force
+            $exe = Join-Path $runtime 'G-CET-Resolver.exe'
+            $mods = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/bin/x64/plugins/cyber_engine_tweaks/mods'
+            $capture = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/capture'
+            $zip = Join-Path $temp 'experimental.zip'
+            $result = (& $exe --capture $capture --mods $mods --generate-pass --pass-output $zip --json | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0 -or !$result.ok -or !$result.pass) { throw 'EXPERIMENTAL_STACK_GENERATION_FAILED' }
+            $manifest = $result.pass.ManifestPath
+            $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+            $pose = @($m.transforms | Where-Object { $_.type -eq 'NATIVE_EXACT_POSITION_EULER' })
+            $psm = @($m.transforms | Where-Object { $_.type -eq 'NATIVE_PSM_ORDERED_READS' })
+            if ($pose.Count -lt 2 -or $psm.Count -lt 1) { throw "EXPERIMENTAL_PRODUCER_COVERAGE: pose=$($pose.Count), psm=$($psm.Count)" }
+            $overlay = Join-Path $temp 'overlay'
+            Expand-Archive -LiteralPath $zip -DestinationPath $overlay
+            $emitted = Join-Path $overlay 'red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll'
+            if ((Get-FileHash -LiteralPath $emitted -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'EXPERIMENTAL_OUTPUT_DLL_HASH' }
+            node tests/ValidateOriginalStackPass.cjs $mods $overlay $manifest
+            if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_ORIGINAL_STACK_OUTPUT_CHECK' }
+            node tests/ValidateGeneratedLuaInvariants.cjs $overlay
+            if ($LASTEXITCODE -ne 0) { throw 'EXPERIMENTAL_LUA_INVARIANTS' }
+            Write-Host "Experimental generation: transforms=$($m.transforms.Count), files=$($m.files.Count), ordered pose=$($pose.Count), ordered PSM=$($psm.Count)"
+            ./tests/OriginalSourceSecondPassContract.ps1 -ResolverExe $exe -OriginalMods $mods -Capture $capture -FirstOverlayRoot $overlay
+          } finally {
+            Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+          }
       - name: Remove temporary private source
         if: always()
         shell: pwsh
