@@ -1226,32 +1226,128 @@ end
         return AfterLine(ref next,handshake[0].Groups["line"].Value,bridge);
     }
 
-    internal static int TryStageCadencedDerived(string modsRoot,ref FixedZeroEngineBuild framework,
-        Dictionary<string,byte[]> staged,Dictionary<string,int> counts,List<object> manifest)
+    // The V2 historical fields always sample at the author phase. No
+    // consumer can suppress those reads without losing a historical value.
+    // Do not generate the old sample/proxy layer on stock source. Migrate
+    // only recognizable owned fragments of previous overlays, independently
+    // of the live Scheduler version; its unused compatibility API can stay.
+    private static readonly Regex HistoricalTrivia = new(
+        """--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*|\[(?<le>=*)\[.*?\]\k<le>\]|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'""",
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    private static bool HistoricalResidual(string source,string owned) =>
+        Regex.IsMatch(HistoricalTrivia.Replace(source,m=>m.Value.StartsWith("--",StringComparison.Ordinal)?" ":m.Value),owned);
+
+    // Do not remove an exact-looking generated fragment inside an author
+    // string or long comment. An actual generated marker starts its own
+    // lexical line comment.
+    private static Match[] HistoricalMatches(string source,Regex pattern,bool marker=false)
     {
-        const string relative="0-Engine/modules/DerivedState.lua";
-        var path=Path.Combine(modsRoot,"0-Engine","modules","DerivedState.lua");
-        if(!File.Exists(path)||!framework.Files.TryGetValue(InitPath,out var hb)||
-           !framework.Files.TryGetValue(SchedulerPath,out var sb))return 0;
-        var module=Encoding.UTF8.GetString(staged.TryGetValue(relative,out var pb)?pb:File.ReadAllBytes(path));
-        var host=Encoding.UTF8.GetString(hb);var scheduler=Encoding.UTF8.GetString(sb);
-        if(!TryCadencedDerivedProducer(module,out var mn)||!TryCadencedDerivedHost(host,out var hn)||
-           !TryCadencedController(scheduler,out var sn)||(module==mn&&host==hn&&scheduler==sn))return 0;
-        if(module!=mn){
-            staged[relative]=Encoding.UTF8.GetBytes(mn);
-            counts[relative]=counts.GetValueOrDefault(relative)+1;
-        }
-        var files=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
-        files[InitPath]=Encoding.UTF8.GetBytes(hn);files[SchedulerPath]=Encoding.UTF8.GetBytes(sn);
-        framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
-            SHA256.HashData(files[InitPath])).ToLowerInvariant()};
-        manifest.Add(new{type="FRAMEWORK_CADENCED_SCALAR_DEMAND",Owner="0-Engine",file=relative,
-            contract="GCET_CADENCED_SCALAR_SNAPSHOT_V2",sourceProof=true,
-            fields=new[]{"hasWeapon","isInWorkspot"},rawExposureRetainsOriginalCadence=true,
-            callbackOrCadenceChanged=false,nativeReadCountChanged=false,policy="ORIGINAL_PHASE_HISTORICAL_SNAPSHOT"});
-        return 1;
+        var trivia=HistoricalTrivia.Matches(source).Cast<Match>().ToArray();
+        return pattern.Matches(source).Cast<Match>().Where(m=>{
+            var at=m.Index+m.Groups["i"].Length;
+            return !trivia.Any(v=>v.Index<=at&&at<v.Index+v.Length&&
+                !(marker&&v.Index==at&&v.Value.StartsWith("--",StringComparison.Ordinal)));
+        }).ToArray();
     }
 
+    private static bool RemoveHistoricalFragment(ref string source, string fragment, int maxCount=1)
+    {
+        var lines=NormalizeLf(fragment).Split('\n');
+        var pattern=@"(?m)^(?<i>[ \t]*)"+Regex.Escape(lines[0]);
+        foreach(var line in lines.Skip(1))
+            pattern+=@"\r*\n\k<i>"+Regex.Escape(line);
+        pattern+=@"[ \t]*(?:\r*\n|$)";
+        var matches=HistoricalMatches(source,new Regex(pattern,RegexOptions.CultureInvariant),fragment.StartsWith("--",StringComparison.Ordinal));
+        if(matches.Length>maxCount)return false;
+        for(var i=matches.Length-1;i>=0;--i)source=source.Remove(matches[i].Index,matches[i].Length);
+        return true;
+    }
+
+    private static bool RestoreHistoricalLine(ref string source,string old,string original)
+    {
+        var pattern=new Regex(@"(?m)^(?<i>[ \t]*)"+Regex.Escape(old)+@"[ \t]*(?=\r?$)");
+        var matches=HistoricalMatches(source,pattern);
+        if(matches.Length==0)return true;
+        if(matches.Length!=1)return false;
+        var m=matches[0];
+        source=source.Remove(m.Index,m.Length).Insert(m.Index,m.Groups["i"].Value+original);
+        return true;
+    }
+
+    internal static bool TryRetireHistoricalModule(string source,out string next)
+    {
+        next=source;
+        var candidate=source;
+        // These identifiers are private to the previous generated layer.
+        // If any unrecognized reference survives, do not publish a partial
+        // reversal. Other author functions/fields remain byte-for-byte.
+        const string owned=@"\b(?:__gcetPitchSample|__gcetRawExposed|__gcetPlayerSamples|__gcetCadencedClock|__gcetCadencedEpoch|__gcetExposePlayerSamples|__gcetResetPlayerSamples|__gcetEnableDemand|__gcetEnableCadencedDemand|__gcetPeek|__gcetReadField|__gcetExpose)\b";
+        if(!HistoricalResidual(candidate,owned)&&
+           !candidate.Contains(DerivedMarker,StringComparison.Ordinal)&&!candidate.Contains(CadencedDerivedMarker,StringComparison.Ordinal))return true;
+        if(Count(WithoutLuaTrivia(candidate),"function DerivedState.Update(player)")!=1||
+           Count(WithoutLuaTrivia(candidate),"function DerivedState.Get()")!=1||
+           Count(WithoutLuaTrivia(candidate),"function DerivedState.Reset()")!=1)return false;
+        bool Restore(string old,string original)
+        {
+            return RestoreHistoricalLine(ref candidate,old,original);
+        }
+        // Remove full generated adapters first (the cadence read/expose
+        // hooks may be embedded within the pitch adapter).
+        if(!RemoveHistoricalFragment(ref candidate,CadencedAdapter)||
+           !RemoveHistoricalFragment(ref candidate,CadencedAdapter.Replace("controller.CadencedSampleVersion ~= 2","controller.CadencedSampleVersion ~= 1",StringComparison.Ordinal))||
+           !RemoveHistoricalFragment(ref candidate,CadencedRead)||
+           !RemoveHistoricalFragment(ref candidate,"__gcetExposePlayerSamples()",2)||
+           !RemoveHistoricalFragment(ref candidate,"__gcetResetPlayerSamples()")||
+           !RemoveHistoricalFragment(ref candidate,"if loading == true then __gcetResetPlayerSamples() end")||
+           !RemoveHistoricalFragment(ref candidate,CadencedLocals)||
+           !RemoveHistoricalFragment(ref candidate,CadencedAdvance)||
+           !RemoveHistoricalFragment(ref candidate,CadencedMark)||
+           !Restore(CadencedWeaponOffer,"cached.hasWeapon = resolveHasWeapon(player)")||
+           !Restore(CadencedWorkspotOffer,"cached.isInWorkspot = resolveIsInWorkspot(player)"))return false;
+        if(!RemoveHistoricalFragment(ref candidate,DerivedAdapter)||
+           !RemoveHistoricalFragment(ref candidate,DerivedAdapter.Replace("controller.SampleEpochVersion ~= 2","controller.SampleEpochVersion ~= 1",StringComparison.Ordinal))||
+           !Restore("if __gcetPitchSample then __gcetPitchSample.Offer() else cached.lookPitch = resolveLookPitch() end","cached.lookPitch = resolveLookPitch()")||
+           !RemoveHistoricalFragment(ref candidate,"__gcetRawExposed = true\nif __gcetPitchSample then __gcetPitchSample.Expose() end")||
+           !RemoveHistoricalFragment(ref candidate,"if loading == true and __gcetPitchSample then __gcetPitchSample.Reset() end")||
+           !RemoveHistoricalFragment(ref candidate,"if __gcetPitchSample then __gcetPitchSample.Reset() end")||
+           !RemoveHistoricalFragment(ref candidate,"local __gcetPitchSample, __gcetRawExposed = nil, false")||
+           !RemoveHistoricalFragment(ref candidate,DerivedMarker)||
+           !RemoveHistoricalFragment(ref candidate,CadencedDerivedMarker))return false;
+        if(HistoricalResidual(candidate,owned)||
+           Count(WithoutLuaTrivia(candidate),"cached.lookPitch = resolveLookPitch()")!=1)return false;
+        next=candidate;return true;
+    }
+
+    internal static bool TryRetireHistoricalHost(string source,out string next)
+    {
+        next=source;
+        var candidate=source;
+        const string owned=@"\b(?:__gcetDerivedDemand|__gcetEnableDemand|__gcetEnableCadencedDemand|__gcetPeek|__gcetReadField|__gcetExpose)\b";
+        if(!HistoricalResidual(candidate,owned)&&
+           !candidate.Contains(DerivedHostMarker,StringComparison.Ordinal)&&!candidate.Contains(CadencedDerivedHostMarker,StringComparison.Ordinal))return true;
+        const string legacy="__gcetDerivedDemand = type(DerivedState.__gcetEnableDemand) == 'function' and type(DerivedState.__gcetPeek) == 'function' and type(DerivedState.__gcetReadField) == 'function' and type(DerivedState.__gcetExpose) == 'function' and DerivedState.__gcetEnableDemand(__gcetDemand)";
+        const string bridge = """
+-- G-CET cadenced player scalar host v1
+if __gcetDerivedDemand and type(DerivedState.__gcetEnableCadencedDemand) == "function" then
+    DerivedState.__gcetEnableCadencedDemand(__gcetDemand, function() return currentFrame end, GetPlayer)
+end
+""";
+        var current=legacy.Replace("(__gcetDemand)","(__gcetDemand, function() return currentFrame end)",StringComparison.Ordinal);
+        foreach(var handshake in new[]{legacy,current,legacy.Replace("= type(DerivedState.","= Lifecycle.__gcetDerivedStateSafe == true and type(DerivedState.",StringComparison.Ordinal),current.Replace("= type(DerivedState.","= Lifecycle.__gcetDerivedStateSafe == true and type(DerivedState.",StringComparison.Ordinal)})
+            if(!RemoveHistoricalFragment(ref candidate,handshake))return false;
+        const string peek="State.derived = __gcetDerivedDemand and DerivedState.__gcetPeek() or DerivedState.Get()";
+        if(!RestoreHistoricalLine(ref candidate,peek,"State.derived = DerivedState.Get()"))return false;
+        if(!RemoveHistoricalFragment(ref candidate,bridge)||
+           !RemoveHistoricalFragment(ref candidate,"if __gcetDerivedDemand and tbl == State.derived then DerivedState.__gcetReadField(tbl, k) end")||
+           !RemoveHistoricalFragment(ref candidate,"if __gcetDerivedDemand then if tbl == State then DerivedState.__gcetExpose() elseif tbl == State.derived then DerivedState.__gcetExpose(tbl) end end")||
+           !RemoveHistoricalFragment(ref candidate,"local __gcetDerivedDemand = false")||
+           !RemoveHistoricalFragment(ref candidate,DerivedHostMarker)||
+           !RemoveHistoricalFragment(ref candidate,CadencedDerivedHostMarker)||
+           HistoricalResidual(candidate,owned)||
+           Count(WithoutLuaTrivia(candidate),"State.derived = DerivedState.Get()")!=1)return false;
+        next=candidate;return true;
+    }
 
     // Shared stable system handles are independent of historical value
     // sampling. Reuse the EXISTING root provider at the original read site,
@@ -1865,8 +1961,8 @@ end
             }
             host = hostNext;
         }
-        // Independent scalar producer slice. Reuse the exact same
-        // scheduler instance and preserve author sampling if any side drifts.
+        // Retire the old historical sample layer at its original generator.
+        // Stock historical fields already execute the cheapest correct path.
         const string derivedRelative = "0-Engine/modules/DerivedState.lua";
         var derivedLive = Path.Combine(modsRoot, "0-Engine", "modules", "DerivedState.lua");
         if (File.Exists(derivedLive))
@@ -1874,52 +1970,26 @@ end
             var bytes = staged.TryGetValue(derivedRelative, out var pending)
                 ? pending : File.ReadAllBytes(derivedLive);
             var text = Encoding.UTF8.GetString(bytes);
-            const string lifecycleRelative = "0-Engine/modules/Lifecycle.lua";
-            var lifecyclePath = Path.Combine(modsRoot, "0-Engine", "modules", "Lifecycle.lua");
-            var needsLifecycle = host.Contains("Lifecycle.Init(Events, State, Logger)", StringComparison.Ordinal);
-            string? lifecycleSource = null;
-            string? lifecycleNext = null;
-            var lifecycleSafe = !needsLifecycle;
-            if (needsLifecycle && File.Exists(lifecyclePath))
+            if(TryRetireHistoricalModule(text,out var producer)&&TryRetireHistoricalHost(host,out var hostNext))
             {
-                lifecycleSource = Encoding.UTF8.GetString(staged.TryGetValue(lifecycleRelative, out var pendingLifecycle)
-                    ? pendingLifecycle : File.ReadAllBytes(lifecyclePath));
-                lifecycleSafe = TryDerivedLifecycle(lifecycleSource, out lifecycleNext);
-            }
-            if (lifecycleSafe && TryDerivedProducer(text, out var producer) &&
-                TryDerivedHost(host, out var hostNext) &&
-                TrySampleController(schedulerText, out var sampleScheduler))
-            {
-                compatible++;
-                var lifecycleChanged = lifecycleNext != lifecycleSource;
-                if (lifecycleChanged)
+                if(producer!=text||hostNext!=host)
                 {
-                    staged[lifecycleRelative] = Encoding.UTF8.GetBytes(lifecycleNext!);
-                    counts[lifecycleRelative] = counts.GetValueOrDefault(lifecycleRelative) + 1;
+                    compatible++;applied++;
+                    if(producer!=text)
+                    {
+                        staged[derivedRelative]=Encoding.UTF8.GetBytes(producer);
+                        counts[derivedRelative]=counts.GetValueOrDefault(derivedRelative)+1;
+                    }
+                    host=hostNext;
+                    manifest.Add(new {type="FRAMEWORK_HISTORICAL_SAMPLE_RETIREMENT",Owner="0-Engine",
+                        file=derivedRelative,sourceProof=true,callbackOrCadenceChanged=false,
+                        nativeReadCountChanged=false,policy="ORIGINAL_PHASE_DIRECT_ASSIGNMENT"});
                 }
-                if (producer != text)
-                {
-                    staged[derivedRelative] = Encoding.UTF8.GetBytes(producer);
-                    counts[derivedRelative] = counts.GetValueOrDefault(derivedRelative) + 1;
-                }
-                if (producer != text || hostNext != host || lifecycleChanged || sampleScheduler != Encoding.UTF8.GetString(scheduler))
-                {
-                    applied++;
-                    manifest.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
-                        RuleId = "0engine-demand-derived-scalar-sample", sourceProof = true,
-                        Handler = "ZeroEngineDemandSource", PolicyClass = "ORIGINAL_PHASE_HISTORICAL_SNAPSHOT",
-                        nativeReadCountChanged = false,
-                        gameplayVerification = "PENDING_COMBINED_BATCH" });
-                }
-                host = hostNext;
-                schedulerText = sampleScheduler;
             }
             else
-            {
-                skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
-                    RuleId = "0engine-demand-derived-scalar-sample",
-                    reason = "Camera scalar/proxy access, raw Lifecycle state ownership or sample controller not proven; preserve original sampling." });
-            }
+                skipped.Add(new {type="SEMANTIC_RULE",Owner="0-Engine",
+                    RuleId="0engine-demand-derived-scalar-sample",
+                    reason="Unknown historical sample ownership; retain existing module and host."});
         }
         // Context demand belongs to the same existing scheduler. No new
         // native callback or recurring producer; old/mixed runtime fallback.

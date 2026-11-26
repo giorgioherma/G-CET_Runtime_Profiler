@@ -36,6 +36,19 @@ if scenario=="old-module" or scenario=="stock" or scenario=="stock-reentrant" th
 if scenario=="old-scheduler" then package.loaded["modules/G-CET/Scheduler"]=dofile(root.."/stock-scheduler.lua") end
 if scenario=="legacy-module" then package.loaded["modules/DerivedState"]=dofile(root.."/legacy-module.lua") end
 if scenario=="legacy-scheduler" then package.loaded["modules/G-CET/Scheduler"]=dofile(root.."/legacy-scheduler.lua") end
+local registrations=0
+if arg[3]=="retired" then
+    local scheduler=require("modules/G-CET/Scheduler")
+    for _,name in ipairs({"DefineSample","DefineCadencedSample"}) do
+        local fn=scheduler.Demand and scheduler.Demand[name]
+        if type(fn)=="function" then
+            scheduler.Demand[name]=function(...)
+                registrations=registrations+1
+                return fn(...)
+            end
+        end
+    end
+end
 E=dofile(root..(scenario=="old-host" and "/stock-host.lua" or "/init.lua"))
 local D=require("modules/DerivedState")
 local function tick(n)for i=1,n do E.Tick(1/60)end end
@@ -92,4 +105,7 @@ else
     tick(6)
     assert(retained.hasWeapon and transaction==4 and slot==3)
 end
-print("Cadenced historical scalar PASS: "..scenario)
+if arg[3]=="retired" then
+    assert(registrations==0,"retired fields must not register historical sample consumers")
+end
+print("Cadenced historical scalar PASS: "..scenario..(arg[3]=="retired" and " (retired)" or ""))

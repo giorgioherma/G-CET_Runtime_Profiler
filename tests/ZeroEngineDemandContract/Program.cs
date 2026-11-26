@@ -510,23 +510,27 @@ return Engine
     Check(ZeroEngineDemandSource.TryDerivedHost(derivedHost, out _), "actual scalar host proof");
     Check(ZeroEngineDemandSource.TryDerivedLifecycle(lifecycle, out _), "actual raw Lifecycle ownership proof");
     Check(!ZeroEngineDemandSource.TryDerivedLifecycle(lifecycle.Replace("State = state", "State = state\n    externalState = State"), out _), "unproved raw Lifecycle escape accepted");
+    // Stock production must not add historical demand machinery.
     var scalarFramework = new FixedZeroEngineBuild(new Dictionary<string, byte[]> {
         [ZeroEngineDemandSource.InitPath] = Encoding.UTF8.GetBytes(derivedHost),
         [ZeroEngineDemandSource.SchedulerPath] = Encoding.UTF8.GetBytes(scheduler)
     }, "", "", "", "");
     var scalarStage = new Dictionary<string, byte[]>();
     var scalarCount = ZeroEngineDemandSource.TryStage(root, ref scalarFramework, scalarStage, new(), new(), new());
-    Check(scalarCount == (privateSource ? 3 : 1), "central scalar sample admission: " + scalarCount);
-    var scalarHost = scalarFramework.Files[ZeroEngineDemandSource.InitPath];
-    var scalarScheduler = scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath];
-    var scalarModule = scalarStage["0-Engine/modules/DerivedState.lua"];
-    var scalarLifecycle = scalarStage["0-Engine/modules/Lifecycle.lua"];
-    Check(ZeroEngineDemandSource.TryStage(root, ref scalarFramework, scalarStage, new(), new(), new()) == 0,
-        "central scalar repeat generation");
-    Check(scalarHost.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.InitPath]) &&
-        scalarScheduler.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath]) &&
-        scalarModule.SequenceEqual(scalarStage["0-Engine/modules/DerivedState.lua"]), "scalar repeat changed bytes");
-
+    Check(scalarCount == (privateSource ? 2 : 0), "stock historical path must not create sample slots: " + scalarCount);
+    Check(!scalarStage.ContainsKey("0-Engine/modules/DerivedState.lua")&&
+        !Encoding.UTF8.GetString(scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath]).Contains("function demand.DefineSample("),
+        "stock generation added redundant historical layer");
+    // Generate historical overlays using the original source templates,
+    // solely to test migration and mixed-version execution.
+    Check(ZeroEngineDemandSource.TryDerivedProducer(derived,out var historicalModule),"historical module fixture");
+    Check(ZeroEngineDemandSource.TryDerivedHost(derivedHost,out var historicalHost),"historical host fixture");
+    Check(ZeroEngineDemandSource.TryDerivedLifecycle(lifecycle,out var historicalLifecycle),"historical lifecycle fixture");
+    Check(ZeroEngineDemandSource.TrySampleController(Encoding.UTF8.GetString(generatedScheduler),out var historicalScheduler),"historical scheduler fixture");
+    var scalarHost=Encoding.UTF8.GetBytes(historicalHost);
+    var scalarScheduler=Encoding.UTF8.GetBytes(historicalScheduler);
+    var scalarModule=Encoding.UTF8.GetBytes(historicalModule);
+    var scalarLifecycle=Encoding.UTF8.GetBytes(historicalLifecycle);
     // Independent, actual pure scalar producer fields; original six-frame
     // offer cadence and raw backing-table exposure must survive.
     var cadenceDerived=privateSource?derived:File.ReadAllText("tests/ZeroEngineDemandContract/CadencedDerivedFixture.lua");
@@ -583,31 +587,48 @@ return Engine
             migratedLineCadenced==Lines(cadenceSchedulerNext),
             "cadenced migration failed for line-ending form");
     }
-    // Exercise the production stage with every independent missing
-    // component, then repeat the complete output through its real entrypoint.
+    // Production retirement is independent of whether the old host,
+    // module, or controller is present. Keep all original behavior tests.
     var cadenceStageRoot=Path.Combine(root,"cadence-stage");
     var cadenceStageDir=Path.Combine(cadenceStageRoot,"0-Engine","modules");
     Directory.CreateDirectory(cadenceStageDir);
-    foreach(var missing in new[]{"all","host","module","scheduler","none"})
+    foreach(var shape in new[]{"stock","pitch","full","host-only","module-only","legacy","partial","custom"})
     {
-        var h=missing is "all" or "host"?cadencePitchHost:cadenceHostNext;
-        var m=missing is "all" or "module"?cadencePitch:cadenceModuleNext;
-        var sc=missing is "all" or "scheduler"?cadencePitchScheduler:cadenceSchedulerNext;
+        var h=shape is "stock" or "module-only"?cadenceHost:shape=="pitch"?cadencePitchHost:cadenceHostNext;
+        var m=shape is "stock" or "host-only"?cadenceDerived:shape=="pitch"?cadencePitch:shape=="legacy"?legacyModule:cadenceModuleNext;
+        if(shape=="partial")m=m.Replace("if __gcetCadencedClock then __gcetCadencedEpoch = __gcetCadencedClock() end","-- original phase retained");
+        if(shape=="custom")m="-- author custom header\n"+m;
+        var sc=shape=="stock"?scheduler:shape=="legacy"?legacyScheduler:cadenceSchedulerNext;
         File.WriteAllText(Path.Combine(cadenceStageDir,"DerivedState.lua"),m);
         var fw=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
             [ZeroEngineDemandSource.InitPath]=Encoding.UTF8.GetBytes(h),
             [ZeroEngineDemandSource.SchedulerPath]=Encoding.UTF8.GetBytes(sc)
         },"","","","");
         var ss=new Dictionary<string,byte[]>();
-        Check(ZeroEngineDemandSource.TryStageCadencedDerived(cadenceStageRoot,ref fw,ss,new(),new())==
-            (missing=="none"?0:1),"complete cadenced source: "+missing);
-        Check(Encoding.UTF8.GetString(fw.Files[ZeroEngineDemandSource.InitPath])==cadenceHostNext&&
-            Encoding.UTF8.GetString(fw.Files[ZeroEngineDemandSource.SchedulerPath])==cadenceSchedulerNext&&
-            (ss.TryGetValue("0-Engine/modules/DerivedState.lua",out var mb)?Encoding.UTF8.GetString(mb):m)==cadenceModuleNext,
-            "cadenced partial output differs: "+missing);
-        Check(ZeroEngineDemandSource.TryStageCadencedDerived(cadenceStageRoot,ref fw,ss,new(),new())==0,
-            "cadenced repeat after actual stage: "+missing);
+        Check(ZeroEngineDemandSource.TryStage(cadenceStageRoot,ref fw,ss,new(),new(),new())==(shape=="stock"?0:1),
+            "historical retirement: "+shape);
+        var mh=Encoding.UTF8.GetString(fw.Files[ZeroEngineDemandSource.InitPath]);
+        var mm=ss.TryGetValue("0-Engine/modules/DerivedState.lua",out var mb)?Encoding.UTF8.GetString(mb):m;
+        Check(!mh.Contains("__gcetDerivedDemand")&&!mm.Contains("__gcetPitchSample")&&!mm.Contains("__gcetPlayerSamples")&&
+            mm.Contains("cached.lookPitch = resolveLookPitch()")&&mm.Contains("cached.hasWeapon = resolveHasWeapon(player)")&&
+            mm.Contains("cached.isInWorkspot = resolveIsInWorkspot(player)"),
+            "historical retirement left hot bookkeeping: "+shape);
+        Check(shape!="custom"||mm.StartsWith("-- author custom header"),"author edit lost");
+        Check(ZeroEngineDemandSource.TryStage(cadenceStageRoot,ref fw,ss,new(),new(),new())==0,
+            "historical retirement repeat: "+shape);
     }
+    Check(!ZeroEngineDemandSource.TryRetireHistoricalModule(cadenceModuleNext+"\nexternal(__gcetPlayerSamples)",out _),
+        "unknown generated state escape must refuse");
+    Check(!ZeroEngineDemandSource.TryRetireHistoricalHost(cadenceHostNext+"\nexternal(__gcetDerivedDemand)",out _),
+        "unknown host state escape must refuse");
+    Check(ZeroEngineDemandSource.TryRetireHistoricalModule(cadenceModuleNext,out var retiredModule),"full migrated module");
+    Check(ZeroEngineDemandSource.TryRetireHistoricalHost(cadenceHostNext,out var retiredHost),"full migrated host");
+    Check(!ZeroEngineDemandSource.TryRetireHistoricalModule(cadenceModuleNext+"\nexternal(DerivedState[\"__gcetPeek\"])",out _),
+        "quoted unknown API reference must refuse");
+    var comment="--[=[\nif __gcetPitchSample then __gcetPitchSample.Offer() else cached.lookPitch = resolveLookPitch() end\n]=]\n";
+    Check(ZeroEngineDemandSource.TryRetireHistoricalModule(comment+cadenceModuleNext,out var commentedRetired)&&
+        commentedRetired.StartsWith(comment,StringComparison.Ordinal),
+        "preserve exact-looking generated fragments in author long comments");
     Check(!ZeroEngineDemandSource.TryCadencedDerivedProducer(cadencePitch.Replace(
         "cached.hasWeapon = resolveHasWeapon(player)","cached.hasWeapon = resolveHasWeapon(player)\n        externalConsumer(cached.hasWeapon)"),out _),
         "internal field dependency must stay eager");
@@ -631,6 +652,20 @@ return Engine
             cadencePsi.ArgumentList.Add(scenario);
             using var cadenceProcess=Process.Start(cadencePsi)!;cadenceProcess.WaitForExit();
             Check(cadenceProcess.ExitCode==0,"cadenced scalar execution: "+scenario);
+        }
+        // Execute the actual retired source, not just the old generated
+        // templates. Mixed installs must keep historical sampling without
+        // registering unused sample consumers.
+        File.WriteAllText(Path.Combine(cadenceModules,"DerivedState.lua"),retiredModule);
+        File.WriteAllText(Path.Combine(cadenceRoot,"init.lua"),retiredHost);
+        foreach(var scenario in new[]{"no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler","legacy-module","legacy-scheduler","reentrant","stock-reentrant"}){
+            var retiredPsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+            retiredPsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteCadencedDerived.lua");
+            retiredPsi.ArgumentList.Add(cadenceRoot);
+            retiredPsi.ArgumentList.Add(scenario);
+            retiredPsi.ArgumentList.Add("retired");
+            using var retiredProcess=Process.Start(retiredPsi)!;retiredProcess.WaitForExit();
+            Check(retiredProcess.ExitCode==0,"retired scalar execution: "+scenario);
         }
     }
 
