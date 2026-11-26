@@ -2391,6 +2391,17 @@ public static class PassGeneratorService
         var import="local __gcetNativeReads = require(\""+module+"\")";
         if(normalized.Split(bridge,StringSplitOptions.None).Length!=2||
            normalized.Split(import,StringSplitOptions.None).Length!=2)return false;
+        var importLine=Regex.Matches(normalized,@"(?m)^"+Regex.Escape(import)+@"[ \t]*$");
+        var code=NativeReadReuseSource.MaskNonCode(normalized);
+        if(importLine.Count!=1||!Regex.IsMatch(code.Substring(importLine[0].Index,importLine[0].Length),
+            @"\Alocal __gcetNativeReads = require\(\s*\)\s*\z"))return false;
+        var consumers=code.Remove(importLine[0].Index,importLine[0].Length);
+        // The coordinator is a private local alias to its reviewed worker.
+        // Do not accept arbitrary aliases/escape or a write to its methods.
+        if(Regex.Matches(consumers,@"\b__gcetNativeReads\b").Cast<Match>().Any(m=>
+            !Regex.IsMatch(consumers[(m.Index+m.Length)..],@"\A\s*\.\s*Get[A-Za-z0-9_]+\b"))||
+           Regex.IsMatch(consumers,@"\b__gcetNativeReads\s*\.\s*Get[A-Za-z0-9_]+\s*=(?!=)"))
+            return false;
         var workerRel=relative.Split('/')[0]+"/GCET_Semantic/"+name;
         var path=Path.Combine(root,workerRel.Replace('/',Path.DirectorySeparatorChar));
         var worker=staged.TryGetValue(workerRel,out var bytes)?NativeReadReuseSource.Decode(bytes):

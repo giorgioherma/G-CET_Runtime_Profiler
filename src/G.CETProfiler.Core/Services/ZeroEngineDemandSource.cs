@@ -420,12 +420,15 @@ end
             // The canonical provider may have been inserted by a later generic
             // stage with different blank separators or indentation.
             var knownGetter=canonicalPlayerProvider is null?null:NormalizeLf(canonicalPlayerProvider).TrimEnd();
-            var inline=Regex.Matches(NormalizeLf(candidate),
+            var normalizedCandidate=NormalizeLf(candidate);
+            var inline=Regex.Matches(normalizedCandidate,
                 @"(?m)^-- G-CET shared provider: PLAYER[ \t]*\n[\s\S]*?^end[ \t]*(?=\n|$)");
             static string[] Lines(string value)=>NormalizeLf(value).Split('\n').Select(l=>l.Trim())
                 .Where(l=>l.Length!=0).ToArray();
             var sharedGetter=knownGetter is not null&&knownGetter.Length>0&&inline.Count==1&&
                 Lines(inline[0].Value).SequenceEqual(Lines(knownGetter),StringComparer.Ordinal)&&
+                Regex.IsMatch(MaskLuaTrivia(normalizedCandidate).Substring(inline[0].Index,inline[0].Length),
+                    @"\blocal\s+function\s+__gcetGetPlayer\s*\(")&&
                 Regex.Matches(code,@"\blocal\s+function\s+__gcetGetPlayer\s*\(").Count==1&&
                 !Regex.IsMatch(code,@"\b__gcetGetPlayer\s*=(?!=)|\bfunction[^\(\r\n]*\([^)]*\b__gcetGetPlayer\b[^)]*\)");
             // The source match itself must be code, not quoted or commented

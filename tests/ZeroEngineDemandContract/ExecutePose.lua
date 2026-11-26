@@ -265,24 +265,30 @@ local function boardReentry(path,mode)
             calls=calls+1;trace[#trace+1]="A:"..k
             if calls==1 then
                 if mode=="detach" then cache.Attach(nil)
+                elseif mode=="reset" then cache.Reset()
+                elseif mode=="reinit" then cache.Init()
+                elseif mode=="nested" then cache.Attach(replacement);cache.Update(replacement)
                 else cache.Attach(replacement) end
             end
             return 100+k
         end,
-        GetBool=function(self,k) error("wrong receiver") end
+        GetBool=function(self,k) calls=calls+1;trace[#trace+1]="Abool:"..k;return false end
     }
     cache.Attach(initial)
     local ok=originalPcall(cache.Update,initial)
-    assert(ok==(mode~="detach"))
-    assert(calls==(mode=="detach" and 1 or 12))
+    local unavailable=mode=="detach" or mode=="reset"
+    assert(ok==not unavailable)
+    assert(calls==(unavailable and 1 or mode=="nested" and 24 or 12))
+    if mode=="reinit" then assert(trace[2]=="A:22","next read must use replacement definition key") end
+    if mode=="replace" or mode=="nested" then assert(trace[2]=="B:"..(mode=="nested" and 1 or 2)) end
     trace[#trace+1]="result:"..tostring(ok)
     return table.concat(trace,"|")
 end
-for _,mode in ipairs({"replace","detach"}) do
+for _,mode in ipairs({"replace","detach","reset","reinit","nested"}) do
     assert(boardReentry(root.."/psm-original.lua",mode)==boardReentry(root.."/psm-restored.lua",mode),
         "PSM reentrant receiver semantics changed: "..mode)
 end
-print("PSM reentrant Attach/Detach: exact next receiver, original failure and publication, zero native batches/replay PASS")
+print("PSM reentrant Attach/Detach/Reset/Init/nested Update: exact next receiver/key, failure and publication, zero native batches/replay PASS")
 
 -- Failed first attach must not leave an active 10Hz Scheduler lane.
 -- A failed later owner must not cancel the surviving owners' lane.

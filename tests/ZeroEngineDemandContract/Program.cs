@@ -474,6 +474,11 @@ end
     var formattedPair=formattedProvider+"\n\n"+exactPairsGenerated.Replace("Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
     Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(formattedPair,true,out var formattedPairRepeat,out _,inlinePlayerProvider)&&
         formattedPairRepeat==formattedPair,"compatible provider formatting must converge");
+    var fakeInline="--[=[\n"+inlinePlayerProvider+"\n]=]\n"+
+        "local function __gcetGetPlayer() return foreign() end\n"+
+        exactPairsSource.Replace("Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
+    Check(!ZeroEngineDemandSource.TryComposeExactPosePairs(fakeInline,true,out _,out _,inlinePlayerProvider),
+        "commented provider cannot authorize a foreign local getter");
     var coordinatedPair="-- G-CET generic native reads coordinator:v1 GCET_Semantic/example\n"+
         "local __gcetNativeReads = require(\"GCET_Semantic/example\")\n"+
         exactPairsGenerated.Replace("Game.GetPlayer()","__gcetNativeReads.GetPlayer()",StringComparison.Ordinal);
@@ -489,7 +494,10 @@ end
         string.Join("\n",psmKeys.Select((key,i)=>"__gcetPsmFields."+key+" = "+(i+1)))+
         "\nfunction BlackboardCache.Update(player)\n    if not playerBB then return end\n"+
         string.Join("\n",psmNames.Select((name,i)=>"    local "+name+" = playerBB:"+(i==11?"GetBool":"GetInt")+"(__gcetPsmFields."+psmKeys[i]+")"))+
-        "\n    publish("+string.Join(", ",psmNames)+")\nend\nfunction BlackboardCache.Attach(board) playerBB = board end\nreturn BlackboardCache\n";
+        "\n    publish("+string.Join(", ",psmNames)+")\nend\nfunction BlackboardCache.Attach(board) playerBB = board end\n"+
+        "function BlackboardCache.Reset() playerBB = nil end\n"+
+        "function BlackboardCache.Init() __gcetPsmFields = {"+
+        string.Join(", ",psmKeys.Select((key,i)=>key+" = "+(i+21)))+"} end\nreturn BlackboardCache\n";
     Check(ZeroEngineDemandSource.TryComposeLegacyPsmBatchFixture(psmReadSource,out var psmBatchGenerated,out var psmBatchCount)&&psmBatchCount==3,
         "12 PSM state reads -> three exact ordered crossings");
     Check(ZeroEngineDemandSource.TryNormalizePsmBatches(psmBatchGenerated,out var psmPlain)&&psmPlain==psmReadSource&&

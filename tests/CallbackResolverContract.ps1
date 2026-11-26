@@ -1827,9 +1827,37 @@ if ([string]$providerLifetimeEntry.contract -ne 'GCET_SHARED_PROVIDER_SESSION_LI
     $poseHost -notmatch 'DerivedState\.Reset\(\)\s+Engine\.__gcetResetSharedProviderCaches\(\)') {
     throw 'Packaged provider lifetime transform lost session ownership, reentrant fill safety or original callbacks.'
 }
+# The existing native host's failed-registration cleanup is independently
+# generated and must release only an unowned canonical Scheduler job.
+$locationDemandTransforms = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'FRAMEWORK_NATIVE_LOCATION_REGISTRATION_DEMAND'
+})
+if ($locationDemandTransforms.Count -ne 1) {
+    throw 'Expected one native-location registration demand cleanup transform.'
+}
+$locationDemandEntry = $locationDemandTransforms[0]
+if (!$locationDemandEntry.sourceProof -or $locationDemandEntry.addsRecurringProducer -or
+    $locationDemandEntry.callbackOrCadenceChanged -or
+    [string]$locationDemandEntry.file -ne '0-Engine/modules/GCETNativeLocationHost.lua' -or
+    [string]$locationDemandEntry.policy -ne 'RELEASE_UNOWNED_EXISTING_SCHEDULER_JOB') {
+    throw 'Native location registration demand manifest misstates ownership or cadence.'
+}
+$locationArchive = [IO.Compression.ZipFile]::OpenRead($resolved.pass.ZipPath)
+try {
+    $locationEntry = $locationArchive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/GCETNativeLocationHost.lua')
+    if ($null -eq $locationEntry) { throw 'Generated native location host missing.' }
+    $locationReader = [IO.StreamReader]::new($locationEntry.Open())
+    try { $locationHost = $locationReader.ReadToEnd() } finally { $locationReader.Dispose() }
+    if ([regex]::Matches($locationHost,'__gcetCancelEmptyLocationJob\(self\)').Count -ne 4 -or
+        $locationHost -notmatch 'if next\(self\.owners\)~=nil or not self\.job then return end' -or
+        $locationHost -notmatch 'pcall\(job\.Cancel\)' -or
+        [regex]::Matches($locationHost,'Schedule\.Every\(0\.10,').Count -ne 1) {
+        throw 'Generated native host failed-registration cancellation or shared job cadence missing.'
+    }
+} finally { $locationArchive.Dispose() }
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms +
     $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count + $poseReaderTransforms.Count +
-    $frameDemandTransforms.Count + $providerLifetimeTransforms.Count
+    $frameDemandTransforms.Count + $providerLifetimeTransforms.Count + $locationDemandTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
