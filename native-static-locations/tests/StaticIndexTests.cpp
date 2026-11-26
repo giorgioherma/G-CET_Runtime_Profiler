@@ -26,6 +26,7 @@ int main(int argc,char** argv) {
     GCET_ASSERT(s.ActiveCount()==0);
     // A foreign exact anchor blocks cohort reuse even when every other
     // registered owner explicitly accepted coarse spatial freshness.
+    {
     auto cohort=std::make_unique<StaticIndex>();
     GCET_ASSERT(cohort->Load(input));
     GCET_ASSERT(!cohort->AllActiveCoarseSpatial());
@@ -78,6 +79,8 @@ int main(int argc,char** argv) {
     }
     GCET_ASSERT(originalReads==10&&sharedReads==5&&positions.SharedSpatialHits()==5);
     std::cout<<"Actual native spatial coordinator: two registered owners, equal transition trace, host + spatial physical reads 10 -> 5 (same-sample fixture) PASS\n";
+
+    }
 
     // Optional manifest policy: absent permits source-owned registration,
     // malformed present data must NEVER quietly become an empty registry.
