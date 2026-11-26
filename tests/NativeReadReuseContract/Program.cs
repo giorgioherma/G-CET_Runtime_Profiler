@@ -1460,10 +1460,10 @@ try
         aDisplay.Contains("local strict = __gcetNativePlayerWorldPosition()") &&
         bDisplay.Contains("local pos = (__gcetReadFrameDisplayPosition() or __gcetNativePlayerWorldPosition())"),
         "independent display sample and exact gameplay reader");
-    foreach(var output in new[]{aDisplay,bDisplay})
+    foreach(var panelOutput in new[]{aDisplay,bDisplay})
     {
-        object?[] repeat=[output,null,0];
-        Check(!(bool)displayTransform.Invoke(null,repeat)! && (string)repeat[1]! == output,
+        object?[] repeat=[panelOutput,null,0];
+        Check(!(bool)displayTransform.Invoke(null,repeat)! && (string)repeat[1]! == panelOutput,
             "display repeat must add no changes");
     }
     var headerEnd=aDisplay.IndexOf("-- G-CET native player Vector4 on-demand live v1",StringComparison.Ordinal);

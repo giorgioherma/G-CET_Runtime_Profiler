@@ -161,9 +161,10 @@ end
             var m=DisplayTriple.Match(plain);
             var triple=m.Success;
             if(!triple)m=DisplayAlias.Match(plain);
-            if(!m.Success)continue;
+            if(!m.Success||!actual.EndsWith(plain[m.Length..],StringComparison.Ordinal))continue;
             var plainCode=NativeReadReuseSource.MaskNonCode(plain);
-            int Uses(string name)=>Regex.Matches(plainCode,@"\b"+Regex.Escape(name)+@"\b").Count;
+            // A property token .x/.y/.z is not a reference to a local x/y/z.
+            int Uses(string name)=>Regex.Matches(plainCode,@"(?<![\w.])"+Regex.Escape(name)+@"\b").Count;
             var names=new[]{"x","y","z"}.Select(k=>m.Groups[k].Value).ToArray();
             if(names.Distinct(StringComparer.Ordinal).Count()!=3||names.Any(n=>Uses(n)!=2))continue;
             if(!triple&&(names.Contains(m.Groups["pos"].Value)||Uses(m.Groups["pos"].Value)!=4))continue;
@@ -246,7 +247,16 @@ end
             var text=NativeReadReuseSource.Decode(input);
             var liveChanged=TryTransform(text,out var result,out var count);
             var displayChanged=TryFrameDisplay(result,out var display,out var displaySites);
-            if(displayChanged)result=display;
+            if(displayChanged)
+            {
+                if(LuaLocalBudgetAnalyzer.Analyze(display).MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
+                    result=display;
+                else
+                {
+                    displayChanged=false;
+                    skipped.Add(new{type="NATIVE_PLAYER_POSITION_FRAME_DISPLAY",file=key,reason="LUA_LOCAL_LIMIT"});
+                }
+            }
             if(!liveChanged&&!displayChanged)continue;
             if(LuaLocalBudgetAnalyzer.Analyze(result).MaxActiveLocals>
                LuaLocalBudgetAnalyzer.Limit)
