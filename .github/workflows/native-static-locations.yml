@@ -1,4 +1,4 @@
-name: G-HoneyTrap RED4ext Location Tracker (isolated)
+name: G-NativeRuntime RED4ext native service (isolated)
 
 # Independent from pinned Profiler native CI and main Profiler/Resolver CI.
 # This workflow builds a separate developer-only tracker artifact. It MUST NOT
@@ -49,13 +49,13 @@ jobs:
           lua5.4 native-static-locations/tests/CETPlayerSnapshotHubTests.lua
           lua5.4 native-static-locations/tests/CETPlayerSnapshotAutoTests.lua
       - name: Compile deterministic sample data
-        run: python native-static-locations/tools/compile_locations.py native-static-locations/examples/sample-installed-only.json ${{ runner.temp }}/G-CET.locations
+        run: python native-static-locations/tools/compile_locations.py native-static-locations/examples/sample-installed-only.json ${{ runner.temp }}/G-Native.locations
       - name: Build and execute allocation-bounded spatial index tests
         run: |
           cmake -S native-static-locations -B build/static-locations -DCMAKE_BUILD_TYPE=Release -DGCET_BUILD_PLUGIN=OFF
           cmake --build build/static-locations --parallel 2
           ctest --test-dir build/static-locations --output-on-failure
-          build/static-locations/gcet_static_core_test '${{ runner.temp }}/G-CET.locations'
+          build/static-locations/gcet_static_core_test '${{ runner.temp }}/G-Native.locations'
 
   plugin-windows:
     runs-on: windows-2022
@@ -110,7 +110,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $cpp = Get-Content native-static-locations/src/Plugin.cpp -Raw
           $header = Get-Content native-static-locations/include/PlayerSnapshot.hpp -Raw
-          $dll = 'build/static-locations/Release/GCETStaticLocations.dll'
+          $dll = 'build/static-locations/Release/G-Engine.dll'
           if (!$cpp.Contains('RegisterFunction("GCETPlayerVector4",PlayerVector4,"Vector4"') -or
               !$cpp.Contains('w=pos.W') -or
               !$cpp.Contains('RegisterFunction("GCETPlayerVector4Live"') -or
@@ -119,6 +119,13 @@ jobs:
             throw 'Player Vector4 RTTI registration or complete snapshot transfer is missing.'
           }
           $binary = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes((Resolve-Path $dll).Path))
+          $wide=[Text.Encoding]::Unicode.GetString([IO.File]::ReadAllBytes((Resolve-Path $dll).Path))
+          # PE string alignment is compiler-dependent. Check both byte offsets.
+          $raw=[IO.File]::ReadAllBytes((Resolve-Path $dll).Path)
+          $wideOdd=[Text.Encoding]::Unicode.GetString($raw,1,$raw.Length-1)
+          foreach ($marker in @('G-Native.locations','G-NativeRuntime')) {
+            if (!$wide.Contains($marker) -and !$wideOdd.Contains($marker)) { throw "Native runtime naming contract missing $marker" }
+          }
           if (!$binary.Contains('GCETPlayerVector4')) {
             throw 'Compiled plugin DLL does not contain GCETPlayerVector4 exported RTTI method.'
           }
@@ -130,14 +137,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $dll = 'build/static-locations/Release/GCETStaticLocations.dll'
+          $dll = 'build/static-locations/Release/G-Engine.dll'
           if (!(Test-Path -LiteralPath $dll -PathType Leaf)) { throw "Missing DLL: $dll" }
-          $root = 'native-static-payload/red4ext/plugins/G-CET-StaticLocations'
+          $root = 'native-static-payload/red4ext/plugins/G-NativeRuntime'
           New-Item -ItemType Directory -Force -Path $root | Out-Null
-          Copy-Item -LiteralPath $dll -Destination "$root/GCETStaticLocations.dll"
-          $sha = (Get-FileHash -LiteralPath "$root/GCETStaticLocations.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$sha  GCETStaticLocations.dll" | Set-Content "$root/SHA256.txt" -Encoding ascii
-          $verify = (Get-FileHash -LiteralPath "$root/GCETStaticLocations.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Copy-Item -LiteralPath $dll -Destination "$root/G-Engine.dll"
+          $sha = (Get-FileHash -LiteralPath "$root/G-Engine.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  G-Engine.dll" | Set-Content "$root/SHA256.txt" -Encoding ascii
+          $verify = (Get-FileHash -LiteralPath "$root/G-Engine.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($sha -ne $verify) { throw 'Native payload mismatch' }
           Copy-Item native-static-locations/PAYLOAD-README.md -Destination native-static-payload/README.md
           Write-Host "RED4ext service compiled and verified: $sha"

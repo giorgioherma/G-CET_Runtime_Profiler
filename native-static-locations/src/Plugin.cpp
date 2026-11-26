@@ -51,11 +51,11 @@ namespace {
         if(g_reportedReasons & bit)return;
         g_reportedReasons|=bit;
         switch(code) {
-            case 1:Log("G-CET Static: player unavailable / GameInstance.GetPlayer failed");break;
-            case 2:Log("G-CET Static: player RTTI class unavailable");break;
-            case 3:Log("G-CET Static: player GetWorldPosition method not found");break;
-            case 4:Log("G-CET Static: player GetWorldPosition invocation failed");break;
-            case 5:Log("G-CET Static: player position invalid or out of bounds");break;
+            case 1:Log("G-NativeRuntime: player unavailable / GameInstance.GetPlayer failed");break;
+            case 2:Log("G-NativeRuntime: player RTTI class unavailable");break;
+            case 3:Log("G-NativeRuntime: player GetWorldPosition method not found");break;
+            case 4:Log("G-NativeRuntime: player GetWorldPosition invocation failed");break;
+            case 5:Log("G-NativeRuntime: player position invalid or out of bounds");break;
         }
     }
 
@@ -116,7 +116,7 @@ namespace {
             g_reportedReady=false;
             g_lastPlayerCode=-1;
             g_coordinator.Enter();
-            Log("G-CET Static: running-state entered; awaiting valid player position");
+            Log("G-NativeRuntime: running-state entered; awaiting valid player position");
         }
         return true;
     }
@@ -171,25 +171,25 @@ namespace {
             if(code==0) {
                 if(g_autoProbe && g_probe.Id()==0) {
                     if(g_probe.Create(40.f)>0)
-                        Log("G-CET Static: diagnostic anchor ARMED at player location (40m, no mod callbacks)");
+                        Log("G-NativeRuntime: diagnostic anchor ARMED at player location (40m, no mod callbacks)");
                 }
                 if(g_probe.Id()>0) {
                     const auto changed=g_index.Changes();
                     for(const auto& transition:changed) {
                         if(transition.id==g_probe.Id())
                             Log(transition.inside ?
-                                "G-CET Static: diagnostic anchor NEAR" :
-                                "G-CET Static: diagnostic anchor FAR");
+                                "G-NativeRuntime: diagnostic anchor NEAR" :
+                                "G-NativeRuntime: diagnostic anchor FAR");
                     }
                 }
                 if(!g_reportedReady) {
-                    Log("G-CET Static: player world position VALID; native coordinator active");
+                    Log("G-NativeRuntime: player world position VALID; native coordinator active");
                     g_reportedReady=true;
                 }
             } else {
                 if(g_probe.Id()>0) {
                     g_probe.Remove();
-                    Log("G-CET Static: diagnostic anchor invalidated with unavailable player");
+                    Log("G-NativeRuntime: diagnostic anchor invalidated with unavailable player");
                 }
                 LogErrorCodeOnce(code);
             }
@@ -205,7 +205,7 @@ namespace {
         g_playerSnapshot.Exit();
         if(g_loaded) {
             if(g_probe.Id()>0)g_probe.Remove();
-            Log("G-CET Static: running-state exited; native session invalidated");
+            Log("G-NativeRuntime: running-state exited; native session invalidated");
             g_coordinator.Exit();
             g_lastPlayerCode=-1;
         }
@@ -353,7 +353,7 @@ namespace {
         RED4ext::GetParameter(frame,&radius);
         frame->code++;
         *out=g_loaded?g_probe.Create(radius):-1;
-        if(*out>0)Log("G-CET Static: diagnostic-only anchor created (no author callbacks)");
+        if(*out>0)Log("G-NativeRuntime: diagnostic-only anchor created (no author callbacks)");
     }
     void ProbeId(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
         frame->code++;
@@ -362,7 +362,7 @@ namespace {
     void ProbeRemove(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,bool* out,int64_t){
         frame->code++;
         *out=g_loaded && g_probe.Remove();
-        if(*out)Log("G-CET Static: diagnostic-only anchor removed");
+        if(*out)Log("G-NativeRuntime: diagnostic-only anchor removed");
     }
     void StartSession(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, void*, int64_t) {
         frame->code++;
@@ -600,7 +600,7 @@ namespace {
         RegisterFunction("GCETStaticRemoveAnchor",RemoveAnchor,"Bool",idNames,intTypes,1);
         RegisterFunction("GCETStaticRemoveOwner",RemoveOwner,"Bool",ownerNames,intTypes,1);
         RegisterFunction("GCETStaticMetric",Metric,"Int64",metricNames,intTypes,1);
-        // Independent player-state service; works without G-CET.locations.
+        // Independent player-state service; works without G-Native.locations.
         const char* pcNames[]={"consumer","fields"};
         const char* pcTypes[]={"Int32","Int32"};
         RegisterFunction("GCETPlayerApiVersion",PlayerApiVersion,"Int32",nullptr,nullptr,0);
@@ -624,23 +624,37 @@ namespace {
         RegisterFunction("GCETPlayerPositionEngineReads",PlayerPositionEngineReads,"Int64",nullptr,nullptr,0);
 
     }
-    void LoadData() {
+    bool LoadData() {
         // The location file is co-located with this DLL under red4ext/plugins.
         // There is no filesystem search and no runtime YAML interpreter.
         HMODULE module=nullptr;
         auto addr = reinterpret_cast<LPCWSTR>(&LoadData);
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                addr, &module)) return;
+                                addr, &module)) return false;
         wchar_t path[32768];
         DWORD count=GetModuleFileNameW(module,path,32768);
-        if (!count || count>=32768) return;
+        if (!count || count>=32768) return false;
         auto root = std::filesystem::path(std::wstring(path,count)).parent_path();
-        auto dataPath = root / L"G-CET.locations";
+        // The former DLL has the same RTTI exports and running callbacks.
+        // Refuse to register a second owner, regardless of load order.
+        // Never delete a user's existing overlay or its files.
         std::error_code ec;
-        g_autoProbe=std::filesystem::exists(root / L"G-CET.smoke-probe",ec);
+        const auto legacy = root.parent_path() / L"G-CET-StaticLocations" / L"GCETStaticLocations.dll";
+        if (std::filesystem::exists(legacy,ec) || ec) {
+            Log("G-NativeRuntime: disable/remove the legacy G-CET-StaticLocations overlay before loading G-Engine.dll");
+            return false;
+        }
+        const auto localLegacy = root / L"GCETStaticLocations.dll";
+        if (std::filesystem::exists(localLegacy,ec) || ec) {
+            Log("G-NativeRuntime: legacy DLL alongside G-Engine.dll; refusing duplicate owner");
+            return false;
+        }
+        auto dataPath = root / L"G-Native.locations";
+        g_autoProbe=std::filesystem::exists(root / L"G-Native.smoke-probe",ec);
         g_manifestStatus = gcet::static_locations::LoadOptionalManifest(dataPath,g_index);
         g_loaded = g_manifestStatus != gcet::static_locations::ManifestLoadStatus::Invalid;
+        return true;
     }
 }
 
@@ -671,26 +685,26 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
     if (reason == RED4ext::v1::EMainReason::Load) {
         g_handle=handle;
         g_logger=sdk?sdk->logger:nullptr;
-        LoadData();
+        if(!LoadData()) { g_logger=nullptr; return false; }
         if(g_loaded) {
             if(g_manifestStatus == gcet::static_locations::ManifestLoadStatus::Missing)
-                Log("G-CET Static: no manifest; dynamic location registration ready");
+                Log("G-NativeRuntime: no manifest; dynamic location registration ready");
             else
-                Log("G-CET Static: native location manifest accepted");
+                Log("G-NativeRuntime: native location manifest accepted");
             if(g_autoProbe)
-                Log("G-CET Static: developer smoke-probe ENABLED by marker file");
+                Log("G-NativeRuntime: developer smoke-probe ENABLED by marker file");
         }
         else
-            Log("G-CET Static: native manifest missing or invalid; cache inactive");
+            Log("G-NativeRuntime: native manifest missing or invalid; cache inactive");
         RED4ext::v1::GameState running{};
         running.OnEnter=&RunningEnter;
         running.OnUpdate=&RunningUpdate;
         running.OnExit=&RunningExit;
         if(!sdk || !sdk->gameStates ||
            !sdk->gameStates->Add(handle,RED4ext::EGameStateType::Running,&running)) {
-            Log("G-CET Static: ERROR native running-state callback registration failed");
+            Log("G-NativeRuntime: ERROR native running-state callback registration failed");
         } else {
-            Log("G-CET Static: native running-state callbacks registered");
+            Log("G-NativeRuntime: native running-state callbacks registered");
         }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
@@ -703,7 +717,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
     return true;
 }
 RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* info) {
-    info->name=L"G-CET Static Locations (experimental)";
+    info->name=L"G-NativeRuntime";
     info->author=L"G-CET";
     info->version=RED4EXT_V1_SEMVER(0,2,0);
     info->runtime=RED4EXT_V1_RUNTIME_VERSION_LATEST;

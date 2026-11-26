@@ -1,4 +1,4 @@
-# G-LookupCache — experimental RED4ext location service
+# G-NativeRuntime — experimental RED4ext shared native service
 
 This module is deliberately scoped to **world-space locations fixed within each source-owned registration epoch**, independent of the game-side CET/Lua and REDscript script runtimes. It is **not** a production optimizer yet.
 
@@ -12,7 +12,7 @@ This module is deliberately scoped to **world-space locations fixed within each 
 ## Critical limitations
 
 - **No source recognizer or generated mod subscriptions yet.** Resolver must first prove that original player reads and location loops are purely discovery work and that proximity is not an unsound replacement for remote activity. Static coordinates alone never activate a quest.
-- The sample JSON is test data only, not actual StreetGamesPoker or Specter coordinates. The Windows artifact intentionally ships no sample `G-CET.locations`; it must not be auto-installed as an optimization.
+- The sample JSON is test data only, not actual StreetGamesPoker or Specter coordinates. The Windows artifact intentionally ships no sample `G-Native.locations`; it must not be auto-installed as an optimization.
 - The independent subscriber event ring, snapshots, resync and owner tombstones are implemented and core-tested. Source-authored wake replacement, complete CET and REDscript consumer adapters, native PlayerPuppet getter validation and game save/fast-travel proof remain outstanding. It does **not** yet retire original mod hooks; no claims of measured player performance improvement.
 - Zero native allocations on `Update` are a design target after index construction and reserve. Runtime measurements and allocator instrumentation have not yet proven that target in-game.
 - Native binary and REDscript declarations are compiled separately. ABI, game load, CET RTTI bridge and authored mod behavior require a real game test before integration.
@@ -23,7 +23,7 @@ This module is deliberately scoped to **world-space locations fixed within each 
 
 `python -m unittest discover -s native-static-locations/tests -p 'test_*.py'`
 
-`python native-static-locations/tools/compile_locations.py native-static-locations/examples/sample-installed-only.json /tmp/G-CET.locations`
+`python native-static-locations/tools/compile_locations.py native-static-locations/examples/sample-installed-only.json /tmp/G-Native.locations`
 
 Windows x64 plugin: `cmake -S native-static-locations -B build/static -A x64 -DGCET_BUILD_PLUGIN=ON`, then `cmake --build build/static --config Release`. The RED4ext SDK is pinned to `f9ad5334362a8a0815baf58f47615697485feb52` for reproducibility.
 
@@ -46,6 +46,8 @@ A future generic Resolver recognizer must infer source-proven static coordinates
 
 ## New developer-only live probe
 
-The native plugin logs bounded coordinator diagnostics using RED4ext's own logger: a running-state registration/entry, first valid player position or the exact failure stage, and session exit. This has no per-frame logging. The passive self-probe requires a separate explicit marker `G-CET.smoke-probe` next to the DLL; it creates a radius-40m anchor once a native position is valid and logs only its NEAR/FAR changes. **Do not ship this marker in a normal Resolver-generated optimization overlay.** The test does not call any author Lua/REDscript handler and does not optimize gameplay.
+The native plugin logs bounded coordinator diagnostics using RED4ext's own logger: a running-state registration/entry, first valid player position or the exact failure stage, and session exit. This has no per-frame logging. The passive self-probe requires a separate explicit marker `G-Native.smoke-probe` next to the DLL; it creates a radius-40m anchor once a native position is valid and logs only its NEAR/FAR changes. **Do not ship this marker in a normal Resolver-generated optimization overlay.** The test does not call any author Lua/REDscript handler and does not optimize gameplay.
 
 An additional source-correctness invariant is now tested: after `Arm(true)` a site stays UNKNOWN until the next native position evaluation, avoiding a false FAR snapshot before the nearby wake has been processed.
+
+Canonical game paths: `red4ext/plugins/G-NativeRuntime/G-Engine.dll` and `red4ext/plugins/G-NativeRuntime/G-Native.locations`. The existing GCET RTTI interface and GCAS format are unchanged. Disable the old `G-CET-StaticLocations` mod before enabling the replacement.
